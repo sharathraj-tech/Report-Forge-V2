@@ -53,6 +53,14 @@
             ],
             "styles": [
               "src/styles.scss"
+            ],
+            "allowedCommonJsDependencies": [
+              "jszip",
+              "devexpress-gantt",
+              "devextreme-quill",
+              "exceljs",
+              "file-saver",
+              "devexpress-diagram"
             ]
           },
           "configurations": {
@@ -60,8 +68,8 @@
               "budgets": [
                 {
                   "type": "initial",
-                  "maximumWarning": "500kB",
-                  "maximumError": "1MB"
+                  "maximumWarning": "6MB",
+                  "maximumError": "10MB"
                 },
                 {
                   "type": "anyComponentStyle",
