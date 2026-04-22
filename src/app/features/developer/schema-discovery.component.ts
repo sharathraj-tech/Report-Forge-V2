@@ -66,45 +66,44 @@ import { ReportService } from '../../core/services/report.service';
              </button>
            </div>
         </div>
+      </div>      <div class="p-2 h-[450px] overflow-hidden flex flex-col">
+          <dx-list
+             [items]="tables()"
+             [searchEnabled]="true"
+             searchExpr="this"
+             pageLoadMode="scrollBottom"
+             class="compact-discovery-list flex-1"
+             [height]="'100%'"
+             selectionMode="multiple"
+             [(selectedItems)]="selectedTables">
+             <div *dxTemplate="let item of 'item'" class="flex items-center justify-between p-2 my-1 group rounded-xl transition-all border border-transparent hover:border-indigo-100 hover:bg-indigo-50/50">
+                <div class="flex items-center gap-2.5">
+                  <div class="w-7 h-7 rounded-lg bg-slate-50 flex items-center justify-center group-hover:bg-white transition-colors">
+                    <span class="material-icons text-slate-400 text-sm group-hover:text-indigo-500">{{ item.includes('.') ? 'table_view' : 'fact_check' }}</span>
+                  </div>
+                  <div class="flex flex-col">
+                     <span class="text-[11px] font-bold text-slate-700">{{ item }}</span>
+                  </div>
+                </div>
+                
+                <button class="h-6 px-3 rounded-md text-[8px] font-black tracking-widest transition-all" 
+                   [class]="isImported(item) ? 'bg-emerald-50 text-emerald-600' : 'bg-white text-indigo-600 border border-indigo-100 hover:bg-indigo-600 hover:text-white'"
+                   [disabled]="isImported(item)"
+                   (click)="$event.stopPropagation(); importTable(item)">
+                   {{ isImported(item) ? 'SYNCED' : 'ADD' }}
+                </button>
+             </div>
+          </dx-list>
       </div>
 
-      <div class="p-2 h-[450px] overflow-hidden flex flex-col">
-         <dx-list
-            [items]="tables()"
-            [searchEnabled]="true"
-            searchExpr="this"
-            class="compact-discovery-list flex-1"
-            [height]="'100%'"
-            selectionMode="multiple"
-            [(selectedItems)]="selectedTables">
-            <div *dxTemplate="let item of 'item'" class="flex items-center justify-between p-2 my-1 group rounded-xl transition-all border border-transparent hover:border-indigo-100 hover:bg-indigo-50/50">
-               <div class="flex items-center gap-2.5">
-                 <div class="w-7 h-7 rounded-lg bg-slate-50 flex items-center justify-center group-hover:bg-white transition-colors">
-                   <span class="material-icons text-slate-400 text-sm group-hover:text-indigo-500">{{ item.includes('.') ? 'table_view' : 'fact_check' }}</span>
-                 </div>
-                 <div class="flex flex-col">
-                    <span class="text-[11px] font-bold text-slate-700">{{ item }}</span>
-                 </div>
-               </div>
-               
-               <button class="h-6 px-3 rounded-md text-[8px] font-black tracking-widest transition-all" 
-                  [class]="isImported(item) ? 'bg-emerald-50 text-emerald-600' : 'bg-white text-indigo-600 border border-indigo-100 hover:bg-indigo-600 hover:text-white'"
-                  [disabled]="isImported(item)"
-                  (click)="importTable(item)">
-                  {{ isImported(item) ? 'SYNCED' : 'ADD' }}
-               </button>
-            </div>
-         </dx-list>
-      </div>
-
-      <dx-load-panel [visible]="importing()" message="Syncing..." [showPane]="false"></dx-load-panel>
+      <dx-load-panel [visible]="importing()" message="Processing..." [showPane]="false"></dx-load-panel>
     </div>
   `,
   styles: [`
     :host { display: block; }
     .compact-discovery-list { background: transparent !important; }
     ::ng-deep .compact-discovery-list .dx-list-item { border: none !important; padding: 0 !important; cursor: pointer; }
-    ::ng-deep .compact-discovery-list .dx-list-item-selected { background: transparent !important; }
+    ::ng-deep .compact-discovery-list .dx-list-item-selected { background: #f8fafc !important; border-radius: 12px !important; }
     
     ::ng-deep .compact-select .dx-texteditor-input {
        padding: 8px 12px !important;
@@ -168,24 +167,20 @@ export class SchemaDiscoveryComponent {
 
   selectAll() {
     const unimported = this.tables().filter(t => !this.isImported(t));
-    this.selectedTables.set(unimported);
+    this.selectedTables.set([...unimported]);
   }
 
   importSelected() {
     const list = this.selectedTables();
     if (!list.length) return;
+    
     this.importing.set(true);
-    let count = 0;
-    list.forEach(table => {
-       this.svc.importTable(this.selectedProvider, table, this.selectedDatabase).subscribe({
-          next: () => {
-             count++;
-             if (count === list.length) {
-                this.importing.set(false);
-                this.selectedTables.set([]);
-             }
-          }
-       });
+    this.svc.importTables(this.selectedProvider, list, this.selectedDatabase).subscribe({
+      next: () => {
+        this.importing.set(false);
+        this.selectedTables.set([]);
+      },
+      error: () => this.importing.set(false)
     });
   }
 
@@ -195,7 +190,7 @@ export class SchemaDiscoveryComponent {
 
   importTable(table: string) {
     this.importing.set(true);
-    this.svc.importTable(this.selectedProvider, table, this.selectedDatabase).subscribe({
+    this.svc.importTables(this.selectedProvider, [table], this.selectedDatabase).subscribe({
       next: () => this.importing.set(false),
       error: () => this.importing.set(false)
     });

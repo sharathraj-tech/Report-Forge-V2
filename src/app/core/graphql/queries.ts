@@ -4,6 +4,14 @@ export const GET_ENTITIES = gql`
   query GetEntities {
     entities {
       id name displayName providerKey database tableName schema description
+    }
+  }
+`;
+
+export const GET_ENTITY_DETAIL = gql`
+  query GetEntityDetail($id: String!) {
+    entity(id: $id) {
+      id name displayName providerKey database tableName schema description
       fields {
         id name displayName dataType
         isSensitive isFilterable isSortable isGroupable isAggregatable isVisible
@@ -129,6 +137,14 @@ export const GET_TABLE_COLUMNS = gql`
 export const IMPORT_TABLE = gql`
   mutation ImportTable($input: ImportTableInput!) {
     importTable(input: $input) {
+      id name displayName providerKey database
+    }
+  }
+`;
+
+export const IMPORT_TABLES = gql`
+  mutation ImportTables($inputs: [ImportTableInput!]!) {
+    importTables(inputs: $inputs) {
       id name displayName providerKey database
     }
   }

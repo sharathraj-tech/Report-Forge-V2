@@ -44,6 +44,12 @@ interface ConsoleLog { time: string; message: string; level: 'info' | 'success' 
           </div>
           <div class="h-4 w-px bg-slate-200"></div>
           <span class="text-sm font-semibold text-slate-600 tracking-tight">{{ grid.entity || 'No Source Selected' }}</span>
+          
+          <!-- Mode Toggle -->
+          <div class="ml-4 bg-slate-100 p-0.5 rounded-lg flex items-center shadow-inner border border-slate-200">
+             <button class="px-3 py-1 text-[10px] font-bold rounded-md transition-all" [class.bg-white]="guidedMode()" [class.shadow-sm]="guidedMode()" [class.text-indigo-600]="guidedMode()" [class.text-slate-500]="!guidedMode()" (click)="guidedMode.set(true)">GUIDED</button>
+             <button class="px-3 py-1 text-[10px] font-bold rounded-md transition-all" [class.bg-white]="!guidedMode()" [class.shadow-sm]="!guidedMode()" [class.text-indigo-600]="!guidedMode()" [class.text-slate-500]="guidedMode()" (click)="guidedMode.set(false)">EXPERT</button>
+          </div>
         </div>
         
         <div class="flex items-center gap-2.5">
@@ -82,10 +88,12 @@ interface ConsoleLog { time: string; message: string; level: 'info' | 'success' 
       </div>
 
       <!-- Main Canvas Container: 2 Column Layout with elegant spacing -->
-      <div class="flex-1 overflow-y-auto p-5 custom-scrollbar-premium flex gap-5 items-start max-w-[1400px] mx-auto w-full">
+      <div class="flex-1 overflow-y-auto p-5 custom-scrollbar-premium flex gap-5 items-start max-w-[1400px] mx-auto w-full relative">
 
-        <!-- Column 1: Core Configuration (Wider) -->
-        <div class="flex flex-col gap-5 w-7/12 min-w-[350px]">
+        <!-- EXPERT MODE -->
+        @if (!guidedMode()) {
+          <!-- Column 1: Core Configuration (Wider) -->
+          <div class="flex flex-col gap-5 w-7/12 min-w-[350px]">
           
           <!-- Core Data Source Card -->
           <div class="bg-white rounded-xl border border-slate-200/80 shadow-sm flex flex-col overflow-hidden transition-all hover:shadow-md">
@@ -234,7 +242,90 @@ interface ConsoleLog { time: string; message: string; level: 'info' | 'success' 
             </div>
           </div>
 
-        </div>
+          </div>
+        }
+
+        <!-- GUIDED MODE -->
+        @if (guidedMode()) {
+           <div class="flex flex-col items-center justify-center w-full max-w-3xl mx-auto mt-10">
+              <div class="flex items-center gap-8 mb-10 w-full justify-center">
+                 <div class="flex flex-col items-center gap-2" [class.opacity-50]="guidedStep() !== 1">
+                    <div class="h-10 w-10 rounded-full flex items-center justify-center font-black text-lg transition-colors" [class.bg-indigo-600]="guidedStep() >= 1" [class.text-white]="guidedStep() >= 1">1</div>
+                    <span class="text-[10px] font-black uppercase tracking-widest text-slate-500">Source</span>
+                 </div>
+                 <div class="h-px w-16 bg-slate-200 mt-[-20px]"></div>
+                 <div class="flex flex-col items-center gap-2" [class.opacity-50]="guidedStep() !== 2">
+                    <div class="h-10 w-10 rounded-full flex items-center justify-center font-black text-lg transition-colors" [class.bg-indigo-600]="guidedStep() >= 2" [class.bg-slate-200]="guidedStep() < 2" [class.text-white]="guidedStep() >= 2" [class.text-slate-400]="guidedStep() < 2">2</div>
+                    <span class="text-[10px] font-black uppercase tracking-widest text-slate-500">Metrics</span>
+                 </div>
+                 <div class="h-px w-16 bg-slate-200 mt-[-20px]"></div>
+                 <div class="flex flex-col items-center gap-2" [class.opacity-50]="guidedStep() !== 3">
+                    <div class="h-10 w-10 rounded-full flex items-center justify-center font-black text-lg transition-colors" [class.bg-indigo-600]="guidedStep() >= 3" [class.bg-slate-200]="guidedStep() < 3" [class.text-white]="guidedStep() >= 3" [class.text-slate-400]="guidedStep() < 3">3</div>
+                    <span class="text-[10px] font-black uppercase tracking-widest text-slate-500">Refine</span>
+                 </div>
+              </div>
+
+              <div class="bg-white rounded-2xl shadow-lg border border-slate-100 w-full p-8 min-h-[300px]">
+                 @if (guidedStep() === 1) {
+                    <div class="flex flex-col gap-4 text-center">
+                       <h2 class="text-2xl font-black text-slate-800">What data do you want to analyze?</h2>
+                       <p class="text-slate-500 mb-4">Select the primary business entity you want to build this report around.</p>
+                       <dx-select-box [items]="svc.entities()" displayExpr="displayName" valueExpr="name"
+                          [value]="grid.entity" [searchEnabled]="true" placeholder="Select Entity..."
+                          class="premium-input max-w-md mx-auto w-full" (onValueChanged)="onEntityChange($event.value)">
+                       </dx-select-box>
+                       <button class="mt-8 px-6 py-3 bg-indigo-600 text-white font-bold rounded-xl shadow-md shadow-indigo-200 mx-auto w-fit disabled:opacity-50" [disabled]="!grid.entity" (click)="guidedStep.set(2)">NEXT STEP: METRICS</button>
+                    </div>
+                 }
+                 @if (guidedStep() === 2) {
+                    <div class="flex flex-col gap-4 text-center h-full">
+                       <h2 class="text-2xl font-black text-slate-800">What metrics should we display?</h2>
+                       <p class="text-slate-500 mb-4">Pick the columns to include in your initial view.</p>
+                       <div class="text-left max-w-lg mx-auto w-full">
+                          <dx-tag-box [items]="availableFields()" displayExpr="displayName" valueExpr="name"
+                             [value]="grid.columns" [searchEnabled]="true" [showSelectionControls]="true"
+                             placeholder="Search fields..." class="premium-input">
+                          </dx-tag-box>
+                       </div>
+                       <div class="mt-8 flex justify-between">
+                          <button class="px-6 py-3 bg-slate-100 text-slate-600 font-bold rounded-xl" (click)="guidedStep.set(1)">BACK</button>
+                          <button class="px-6 py-3 bg-indigo-600 text-white font-bold rounded-xl shadow-md shadow-indigo-200" (click)="guidedStep.set(3)">NEXT STEP: REFINE</button>
+                       </div>
+                    </div>
+                 }
+                 @if (guidedStep() === 3) {
+                    <div class="flex flex-col gap-4 text-center h-full">
+                       <h2 class="text-2xl font-black text-slate-800">Ready to review your data?</h2>
+                       <p class="text-slate-500 mb-4">You can run the query now, or use the expert mode for advanced joins and filtering.</p>
+                       
+                       <div class="bg-slate-50 p-6 rounded-xl border border-slate-100 mt-4 text-left">
+                          <h4 class="text-sm font-bold text-slate-800 mb-2">Summary:</h4>
+                          <ul class="text-xs text-slate-600 space-y-1">
+                             <li><strong class="text-slate-800">Source:</strong> {{ grid.entity }}</li>
+                             <li><strong class="text-slate-800">Columns:</strong> {{ grid.columns.length }} selected</li>
+                          </ul>
+                       </div>
+
+                       <div class="mt-8 flex justify-between">
+                          <button class="px-6 py-3 bg-slate-100 text-slate-600 font-bold rounded-xl" (click)="guidedStep.set(2)">BACK</button>
+                          <button class="px-6 py-3 bg-emerald-500 hover:bg-emerald-600 text-white font-bold rounded-xl shadow-md shadow-emerald-200" (click)="onRun()">RUN QUERY NOW</button>
+                       </div>
+                    </div>
+                 }
+              </div>
+           </div>
+        }
+
+        <!-- Visual AST Representation inside Expert Mode -->
+        @if (!guidedMode() && advancedMode()) {
+           <div class="w-full mt-4 bg-slate-900 rounded-xl p-4 shadow-lg border border-slate-800 overflow-hidden flex flex-col gap-2 relative">
+             <div class="absolute top-0 right-0 bg-indigo-600 text-[9px] font-black text-white px-2 py-1 rounded-bl-lg">AST ENGINE</div>
+             <h3 class="text-xs font-black text-indigo-400 uppercase tracking-widest flex items-center gap-2">
+                <span class="material-icons text-[14px]">account_tree</span> Abstract Syntax Tree View
+             </h3>
+             <pre class="text-[10px] font-mono text-slate-300 leading-relaxed overflow-x-auto mt-2">{{ astPreview() }}</pre>
+           </div>
+        }
 
       </div>
 
@@ -337,12 +428,29 @@ export class QueryBuilderComponent implements OnChanges {
   aggFunctions = AGG_FUNCTIONS;
   sortDirs = [{ value: 'ASC', label: 'ASC ↑' }, { value: 'DESC', label: 'DESC ↓' }];
   advancedMode = signal(false);
+  guidedMode = signal(true);
+  guidedStep = signal(1);
   consoleVisible = signal(false);
   filtersModalVisible = signal(false);
   consoleLogs = signal<ConsoleLog[]>([]);
   isRunning = signal(false);
 
   filterGroup = signal<FilterGroup>(createGroup());
+
+  astPreview = computed(() => {
+     return JSON.stringify({
+        kind: 'QueryNode',
+        source: this.grid.entity,
+        selections: [
+           ...this.grid.columns.map(c => ({ kind: 'FieldNode', value: c })),
+           ...(this.grid.calculatedColumns || []).map(c => ({ kind: 'CalcNode', expression: c.expression, alias: c.alias }))
+        ],
+        filters: this.filterGroup(),
+        joins: this.grid.joins || [],
+        aggregations: this.grid.aggregations || [],
+        groupBy: this.grid.groupBy || []
+     }, null, 2);
+  });
 
   queryDigest = computed(() => {
     const g = this.grid;
@@ -394,6 +502,13 @@ export class QueryBuilderComponent implements OnChanges {
     if ((this.grid.joins?.length || 0) > 0 || (this.grid.calculatedColumns?.length || 0) > 0) {
       this.advancedMode.set(true);
     }
+
+    if (this.grid.entity) {
+       const ent = this.svc.entities().find(e => e.name === this.grid.entity);
+       if (ent) {
+          this.svc.loadEntityDetail(ent.id).subscribe();
+       }
+    }
   }
 
   toggleAdvanced() { this.advancedMode.set(!this.advancedMode()); }
@@ -426,6 +541,10 @@ export class QueryBuilderComponent implements OnChanges {
   hasGroupableFields = computed(() => this.groupableFields().length > 0);
 
   onEntityChange(entity: string) {
+    const ent = this.svc.entities().find(e => e.name === entity);
+    if (ent) {
+       this.svc.loadEntityDetail(ent.id).subscribe();
+    }
     this.emit({ ...this.grid, entity, columns: [], groupBy: [], aggregations: [], joins: [], calculatedColumns: [], filters: createGroup() });
   }
 

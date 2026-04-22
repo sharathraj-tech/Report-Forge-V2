@@ -1,7 +1,9 @@
-import { Component, inject, signal, computed, effect } from '@angular/core';
+import { Component, inject, signal, computed, effect, ChangeDetectionStrategy, DestroyRef } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
-import { DxDataGridModule, DxTabsModule, DxButtonModule, DxPopupModule, DxFormModule, DxSelectBoxModule, DxTextBoxModule, DxCheckBoxModule, DxTextAreaModule, DxScrollViewModule, DxLoadPanelModule } from 'devextreme-angular';
+import { Subject, debounceTime, distinctUntilChanged } from 'rxjs';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
+import { DxDataGridModule, DxTabsModule, DxButtonModule, DxPopupModule, DxFormModule, DxSelectBoxModule, DxTextBoxModule, DxCheckBoxModule, DxTextAreaModule, DxScrollViewModule, DxLoadPanelModule, DxListModule } from 'devextreme-angular';
 import { ReportService } from '../../core/services/report.service';
 import type { EntityMetadata, FieldMetadata, EntityRelationship } from '../../core/models/report.models';
 import { SchemaDiscoveryComponent } from '../developer/schema-discovery.component';
@@ -12,8 +14,9 @@ import { SchemaDiscoveryComponent } from '../developer/schema-discovery.componen
   imports: [
     CommonModule, FormsModule, DxDataGridModule, DxTabsModule, DxButtonModule, 
     DxPopupModule, DxFormModule, DxSelectBoxModule, DxTextBoxModule, DxCheckBoxModule,
-    DxTextAreaModule, DxScrollViewModule, DxLoadPanelModule, SchemaDiscoveryComponent
+    DxTextAreaModule, DxScrollViewModule, DxLoadPanelModule, DxListModule, SchemaDiscoveryComponent
   ],
+  changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <div class="h-full flex flex-col bg-slate-50/50 overflow-hidden">
       <!-- Compact Header -->
@@ -26,11 +29,18 @@ import { SchemaDiscoveryComponent } from '../developer/schema-discovery.componen
             <div>
                <h1 class="text-xl font-black text-slate-900 tracking-tight leading-none">Schema Manager</h1>
                <div class="flex items-center gap-2 mt-1">
-                  <span class="flex h-1.5 w-1.5 relative">
-                    <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-                    <span class="relative inline-flex rounded-full h-1.5 w-1.5 bg-emerald-500"></span>
-                  </span>
-                  <span class="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Enterprise Plane</span>
+                  @if (dirtyEntities().size > 0) {
+                     <span class="flex h-1.5 w-1.5 relative">
+                       <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75"></span>
+                       <span class="relative inline-flex rounded-full h-1.5 w-1.5 bg-amber-500"></span>
+                     </span>
+                     <span class="text-[9px] font-bold text-amber-600 uppercase tracking-widest">{{ dirtyEntities().size }} UNSAVED CHANGES</span>
+                  } @else {
+                     <span class="flex h-1.5 w-1.5 relative">
+                       <span class="relative inline-flex rounded-full h-1.5 w-1.5 bg-emerald-500"></span>
+                     </span>
+                     <span class="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Metadata Synced</span>
+                  }
                </div>
             </div>
         </div>
@@ -39,6 +49,14 @@ import { SchemaDiscoveryComponent } from '../developer/schema-discovery.componen
            <button class="w-9 h-9 flex items-center justify-center rounded-xl hover:bg-slate-100 transition-colors group" (click)="loadInitialData()">
               <span class="material-icons text-slate-400 group-hover:rotate-180 transition-transform duration-500 text-lg">refresh</span>
            </button>
+           
+           @if (dirtyEntities().size > 1) {
+              <button (click)="saveAllChanges()" [disabled]="isSaving()" class="bg-amber-500 hover:bg-amber-600 text-white font-bold flex items-center gap-2 px-5 h-9 rounded-xl shadow-lg shadow-amber-100 transition-all active:scale-95 disabled:opacity-50">
+                 <span class="material-icons text-base">save_as</span>
+                 <span class="text-xs">SAVE ALL</span>
+              </button>
+           }
+
            <button 
              class="bg-indigo-50 hover:bg-indigo-100 text-indigo-600 font-bold flex items-center gap-2 px-5 h-9 rounded-xl transition-all active:scale-95"
              (click)="isDiscoveryPopupVisible.set(true)"
@@ -46,20 +64,14 @@ import { SchemaDiscoveryComponent } from '../developer/schema-discovery.componen
               <span class="material-icons text-base">manage_search</span>
               <span class="text-xs">DISCOVER</span>
            </button>
+           
            <button 
-             class="bg-slate-800 hover:bg-slate-900 text-emerald-400 font-bold flex items-center gap-2 px-5 h-9 rounded-xl shadow-sm transition-all active:scale-95"
-             (click)="generateSqlPreview()"
-           >
-              <span class="material-icons text-base text-emerald-400">code</span>
-              <span class="text-xs">SQL PREVIEW</span>
-           </button>
-           <button 
-             class="bg-indigo-600 hover:bg-indigo-700 text-white font-bold flex items-center gap-2 px-5 h-9 rounded-xl shadow-sm transition-all active:scale-95 disabled:opacity-50"
-             [disabled]="!saveEnabled()"
+             class="bg-indigo-600 hover:bg-indigo-700 text-white font-bold flex items-center gap-2 px-5 h-9 rounded-xl shadow-md shadow-indigo-100 transition-all active:scale-95 disabled:opacity-50"
+             [disabled]="!saveEnabled() || isSaving()"
              (click)="saveChanges()"
            >
-              <span class="material-icons text-base">cloud_upload</span>
-              <span class="text-xs">PROVISION</span>
+              <span class="material-icons text-base">{{ isSaving() ? 'hourglass_top' : 'cloud_upload' }}</span>
+              <span class="text-xs">{{ isSaving() ? 'SAVING...' : 'PROVISION' }}</span>
            </button>
         </div>
       </header>
@@ -72,32 +84,51 @@ import { SchemaDiscoveryComponent } from '../developer/schema-discovery.componen
                 <span class="material-icons absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-indigo-600 transition-colors z-10 text-base">search</span>
                 <input 
                   type="text" 
-                  [(ngModel)]="searchQuery"
-                  placeholder="Filter..." 
+                  [ngModel]="searchQuery()"
+                  (ngModelChange)="onSearchChange($event)"
+                  placeholder="Filter tables..." 
                   class="w-full pl-9 pr-3 py-2 bg-white border border-slate-200 rounded-xl text-xs focus:ring-2 focus:ring-indigo-500/10 focus:border-indigo-500 transition-all outline-none"
                 />
              </div>
           </div>
 
-          <div class="flex-1 overflow-y-auto p-2 flex flex-col gap-1 custom-scrollbar">
-             @for (e of filteredEntities(); track e.id) {
-               <div class="px-1">
-                 <button 
-                   (click)="selectedEntityId.set(e.id)"
-                   class="w-full text-left p-2.5 rounded-xl transition-all flex items-center justify-between group relative overflow-hidden"
-                   [class]="selectedEntityId() === e.id ? 'bg-indigo-600 shadow-md' : 'hover:bg-slate-50'"
-                 >
-                   <div class="flex flex-col gap-0.5 z-10">
-                      <span class="text-[12px] font-bold tracking-tight" [class.text-white]="selectedEntityId() === e.id" [class.text-slate-700]="selectedEntityId() !== e.id">{{ e.displayName || e.name }}</span>
-                      <span class="text-[8px] font-mono uppercase opacity-60" [class.text-indigo-100]="selectedEntityId() === e.id" [class.text-slate-400]="selectedEntityId() !== e.id">{{ e.tableName }}</span>
-                   </div>
-                   
-                   @if (isDirty(e.id)) {
-                     <span class="w-1.5 h-1.5 rounded-full absolute top-3 right-3 z-10" [class.bg-white]="selectedEntityId() === e.id" [class.bg-amber-400]="selectedEntityId() !== e.id"></span>
-                   }
-                 </button>
+          <div class="flex-1 overflow-hidden relative">
+             <dx-list
+               [dataSource]="filteredEntities()"
+               [searchEnabled]="false"
+               [pageLoadMode]="pageLoadMode"
+               [height]="'100%'"
+               [noDataText]="'No entities found'"
+               keyExpr="id"
+               class="schema-entity-list"
+             >
+               <div *dxTemplate="let e of 'item'">
+                  <button 
+                    (click)="selectedEntityId.set(e.id)"
+                    class="w-full text-left p-3 rounded-2xl transition-all flex items-center justify-between group relative overflow-hidden mb-1"
+                    [class]="selectedEntityId() === e.id ? 'bg-indigo-600 shadow-lg shadow-indigo-200 -translate-y-0.5' : 'hover:bg-slate-50'"
+                  >
+                    <div class="flex flex-col gap-0.5 z-10">
+                       <span class="text-[12px] font-black tracking-tight" [class.text-white]="selectedEntityId() === e.id" [class.text-slate-800]="selectedEntityId() !== e.id">{{ e.displayName || e.name }}</span>
+                       <div class="flex items-center gap-2">
+                          <span class="text-[8px] font-mono uppercase font-bold opacity-60" [class.text-indigo-100]="selectedEntityId() === e.id" [class.text-slate-400]="selectedEntityId() !== e.id">{{ e.tableName }}</span>
+                          @if (!e.isActive) {
+                             <span class="text-[7px] font-black px-1 rounded uppercase tracking-tighter" [class.bg-white/20]="selectedEntityId() === e.id" [class.text-white]="selectedEntityId() === e.id" [class.bg-slate-100]="selectedEntityId() !== e.id" [class.text-slate-400]="selectedEntityId() !== e.id">Hidden</span>
+                          }
+                       </div>
+                    </div>
+                    
+                    @if (isDirty(e.id)) {
+                      <div class="flex items-center gap-1.5 z-10">
+                         <span class="text-[8px] font-black uppercase" [class.text-indigo-200]="selectedEntityId() === e.id" [class.text-amber-500]="selectedEntityId() !== e.id">Dirty</span>
+                         <span class="w-1.5 h-1.5 rounded-full" [class.bg-white]="selectedEntityId() === e.id" [class.bg-amber-400]="selectedEntityId() !== e.id"></span>
+                      </div>
+                    }
+
+                    <div *ngIf="selectedEntityId() === e.id" class="absolute inset-0 bg-gradient-to-br from-white/10 to-transparent pointer-events-none"></div>
+                  </button>
                </div>
-             }
+             </dx-list>
           </div>
         </aside>
 
@@ -117,7 +148,17 @@ import { SchemaDiscoveryComponent } from '../developer/schema-discovery.componen
               <div class="p-6 pb-20">
                 <!-- Entity Details / Fields Tab -->
                 @if (tabIndex() === 0) {
-                  @if (selectedEntity(); as e) {
+                  @if (isDetailLoading()) {
+                      <div class="max-w-6xl mx-auto flex flex-col gap-6 animate-pulse">
+                         <div class="grid grid-cols-4 gap-4">
+                            @for (i of [1,2,3,4]; track i) {
+                               <div class="bg-white h-16 rounded-2xl border border-slate-100 shadow-sm"></div>
+                            }
+                         </div>
+                         <div class="bg-white h-40 rounded-2xl border border-slate-100 shadow-sm"></div>
+                         <div class="bg-white h-[400px] rounded-2xl border border-slate-100 shadow-sm"></div>
+                      </div>
+                   } @else if (selectedEntity(); as e) {
                     <div class="max-w-6xl mx-auto flex flex-col gap-6">
                        <!-- Compact Meta Stats -->
                        <div class="grid grid-cols-4 gap-4">
@@ -174,50 +215,75 @@ import { SchemaDiscoveryComponent } from '../developer/schema-discovery.componen
 
                        <!-- Compact Fields Grid -->
                        <div class="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden flex flex-col">
-                         <div class="px-6 py-3 border-b border-slate-50 flex items-center justify-between bg-slate-50/50">
-                            <h3 class="text-[10px] font-black text-slate-600 uppercase tracking-widest">Schema Mapping ({{ e.fields.length }})</h3>
-                            <button class="text-[9px] font-black text-indigo-600 hover:underline uppercase">Sync</button>
-                         </div>
-                         
-                         <div class="h-[500px]">
+                          <div class="px-6 py-3 border-b border-slate-50 flex items-center justify-between bg-slate-50/50">
+                             <h3 class="text-[10px] font-black text-slate-600 uppercase tracking-widest flex items-center gap-2">
+                                <span class="material-icons text-base">list</span>
+                                Schema Mapping ({{ e.fields.length }})
+                             </h3>
+                             <div class="flex items-center gap-2">
+                                <button (click)="bulkToggleFields(e, true)" class="px-2 py-1 text-[9px] font-black text-indigo-600 bg-indigo-50 rounded hover:bg-indigo-100 transition-colors uppercase">Show All</button>
+                                <button (click)="bulkToggleFields(e, false)" class="px-2 py-1 text-[9px] font-black text-slate-600 bg-slate-100 rounded hover:bg-slate-200 transition-colors uppercase">Hide All</button>
+                                <div class="h-4 w-px bg-slate-200 mx-1"></div>
+                                <button (click)="loadInitialData()" class="px-2 py-1 text-[9px] font-black text-emerald-600 bg-emerald-50 rounded hover:bg-emerald-100 transition-colors uppercase flex items-center gap-1">
+                                   <span class="material-icons text-[12px]">sync</span>
+                                   Sync
+                                </button>
+                             </div>
+                          </div>
+                          
+                          <div class="h-[500px]">
                             <dx-data-grid
                               [dataSource]="e.fields"
                               [height]="'100%'"
                               [showBorders]="false"
-                              [columnAutoWidth]="true"
+                              [columnAutoWidth]="false"
+                              [scrolling]="{ mode: 'virtual', renderAsync: true }"
                               class="premium-grid compact-grid"
                             >
                               <dxo-editing mode="cell" [allowUpdating]="true"></dxo-editing>
-                              <dxo-scrolling mode="virtual"></dxo-scrolling>
                               
-                              <dxi-column dataField="name" [allowEditing]="false" caption="SOURCE" [width]="150" cellTemplate="nameTemplate"></dxi-column>
-                              <dxi-column dataField="displayName" caption="LABEL"></dxi-column>
-                              <dxi-column dataField="dataType" caption="TYPE" [width]="90" cellTemplate="typeTemplate">
-                                 <dxo-lookup [dataSource]="dataTypes"></dxo-lookup>
-                              </dxi-column>
-                              <dxi-column dataField="isVisible" caption="VIS" [width]="50" dataType="boolean"></dxi-column>
-                              <dxi-column dataField="isFilterable" caption="FILT" [width]="50" dataType="boolean"></dxi-column>
-                              <dxi-column dataField="isAggregatable" caption="AGG" [width]="50" dataType="boolean"></dxi-column>
+                              <dxi-column dataField="isVisible" caption=" " [width]="45" cellTemplate="visibleTemplate" [allowEditing]="true"></dxi-column>
+                              <dxi-column dataField="name" caption="NAME" [allowEditing]="false" cellTemplate="nameTemplate"></dxi-column>
+                              <dxi-column dataField="displayName" caption="DISPLAY NAME"></dxi-column>
+                              <dxi-column dataField="dataType" caption="TYPE" [width]="100" cellTemplate="typeTemplate"></dxi-column>
+                              <dxi-column dataField="isSensitive" caption="SENSITIVE" [width]="90" cellTemplate="sensitiveTemplate"></dxi-column>
                               <dxi-column [width]="60" [allowEditing]="false" cellTemplate="actionsTemplate"></dxi-column>
 
-                              <div *dxTemplate="let d of 'nameTemplate'" class="font-mono text-[10px] text-slate-400">{{ d.value }}</div>
-                              <div *dxTemplate="let d of 'typeTemplate'">
-                                 <span class="px-1.5 py-0.5 rounded text-[8px] font-black uppercase tracking-tighter"
-                                   [class.bg-blue-100]="d.value === 'string'" [class.text-blue-700]="d.value === 'string'"
-                                   [class.bg-amber-100]="d.value === 'number' || d.value === 'decimal'" [class.text-amber-700]="d.value === 'number'"
-                                   [class.bg-emerald-100]="d.value === 'datetime'" [class.text-emerald-700]="d.value === 'datetime'">
-                                   {{ d.value }}
+                              <div *dxTemplate="let d of 'visibleTemplate'">
+                                 <span class="material-icons text-[16px]" [class.text-indigo-600]="d.value" [class.text-slate-300]="!d.value">
+                                    {{ d.value ? 'visibility' : 'visibility_off' }}
                                  </span>
                               </div>
+
+                              <div *dxTemplate="let d of 'nameTemplate'">
+                                 <span class="font-mono text-[10px] font-bold text-slate-500">{{ d.value }}</span>
+                              </div>
+
+                              <div *dxTemplate="let d of 'typeTemplate'">
+                                 <div class="flex items-center gap-1.5">
+                                    <span class="material-icons text-[14px] text-slate-400">
+                                       {{ d.value === 'number' || d.value === 'decimal' ? 'calculate' : d.value === 'datetime' ? 'event' : d.value === 'boolean' ? 'toggle_on' : 'title' }}
+                                    </span>
+                                    <span class="text-[10px] font-bold uppercase">{{ d.value }}</span>
+                                 </div>
+                              </div>
+
+                              <div *dxTemplate="let d of 'sensitiveTemplate'">
+                                 <div class="flex items-center justify-center">
+                                    <span *ngIf="d.value" class="material-icons text-[16px] text-rose-500">lock</span>
+                                    <span *ngIf="!d.value" class="material-icons text-[16px] text-slate-200">lock_open</span>
+                                 </div>
+                              </div>
+
                               <div *dxTemplate="let d of 'actionsTemplate'">
                                  <button class="w-6 h-6 flex items-center justify-center hover:bg-slate-100 rounded text-slate-400 hover:text-indigo-600 transition-all font-bold" (click)="editField(d.data)">
                                     <span class="material-icons text-sm">settings</span>
                                  </button>
                               </div>
                             </dx-data-grid>
-                         </div>
-                       </div>
-                    </div>
+                          </div>
+                        </div>
+                     </div>
                   }
                 }
 
@@ -295,10 +361,11 @@ import { SchemaDiscoveryComponent } from '../developer/schema-discovery.componen
                  <dx-form [formData]="field" labelLocation="top" class="compact-form">
                     <dxi-item dataField="displayName" label="Label" [editorOptions]="{ stylingMode: 'outlined' }"></dxi-item>
                     <dxi-item dataField="dataType" editorType="dxSelectBox" [editorOptions]="{ items: dataTypes }"></dxi-item>
-                    <dxi-item itemType="group" [colCount]="3">
+                    <dxi-item itemType="group" [colCount]="4">
                        <dxi-item dataField="isVisible" editorType="dxCheckBox" label="Vis"></dxi-item>
                        <dxi-item dataField="isFilterable" editorType="dxCheckBox" label="Filt"></dxi-item>
                        <dxi-item dataField="isSensitive" editorType="dxCheckBox" label="PII"></dxi-item>
+                       <dxi-item dataField="isIndexed" editorType="dxCheckBox" label="Idx"></dxi-item>
                     </dxi-item>
                  </dx-form>
                  <div class="flex justify-end gap-2 pt-4 border-t">
@@ -444,18 +511,77 @@ import { SchemaDiscoveryComponent } from '../developer/schema-discovery.componen
        border-radius: 6px;
     }
 
-    ::ng-deep .dx-popup-content { border-radius: 16px; }
-    ::ng-deep .dx-overlay-content { border-radius: 16px !important; }
+    ::ng-deep .dx-popup-content { border-radius: 24px; }
+    ::ng-deep .dx-overlay-content { border-radius: 24px !important; box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25) !important; }
+
+    .schema-entity-list {
+       background: transparent !important;
+       padding: 8px !important;
+    }
+    ::ng-deep .schema-entity-list .dx-list-item {
+       background: transparent !important;
+       border: none !important;
+       padding: 0 !important;
+       margin-bottom: 4px !important;
+    }
+    ::ng-deep .schema-entity-list .dx-list-item-content {
+       padding: 0 !important;
+    }
+    ::ng-deep .schema-entity-list .dx-list-item.dx-state-hover {
+       background: transparent !important;
+    }
+    ::ng-deep .schema-entity-list .dx-list-item.dx-state-focused {
+       background: transparent !important;
+    }
   `]
 })
 export class SchemaManagerComponent {
+  pageLoadMode = 'scroll' as any;
   reportService = inject(ReportService);
   
-  searchQuery = '';
+  searchQuery = signal('');
+  isDetailLoading = signal(false);
   selectedEntityId = signal<string | null>(null);
   tabIndex = signal(0);
   isSaving = signal(false);
   dirtyEntities = signal<Set<string>>(new Set());
+
+  private searchSubject = new Subject<string>();
+  private destroyRef = inject(DestroyRef);
+
+  constructor() {
+    this.searchSubject.pipe(
+      debounceTime(300),
+      distinctUntilChanged(),
+      takeUntilDestroyed(this.destroyRef)
+    ).subscribe(val => this.searchQuery.set(val));
+
+    effect(() => {
+      const id = this.selectedEntityId();
+      if (id) {
+        this.isDetailLoading.set(true);
+        this.reportService.loadEntityDetail(id).subscribe({
+          next: () => this.isDetailLoading.set(false),
+          error: () => this.isDetailLoading.set(false)
+        });
+      }
+    });
+  }
+
+  onSearchChange(val: string) {
+    this.searchSubject.next(val);
+  }
+
+  bulkToggleFields(entity: EntityMetadata, visible: boolean) {
+     entity.fields.forEach(f => f.isVisible = visible);
+     this.markDirty(entity.id);
+     // Trigger refresh by updating the entities signal
+     this.reportService.entities.update(list => {
+        const index = list.findIndex(e => e.id === entity.id);
+        if (index !== -1) list[index] = { ...entity };
+        return [...list];
+     });
+  }
   
   isFieldPopupVisible = signal(false);
   isRelPopupVisible = signal(false);
@@ -475,7 +601,7 @@ export class SchemaManagerComponent {
   entities = this.reportService.entities;
   
   filteredEntities = computed(() => {
-    const q = this.searchQuery.toLowerCase();
+    const q = this.searchQuery().toLowerCase();
     return this.entities().filter(e => 
       e.name.toLowerCase().includes(q) || e.displayName.toLowerCase().includes(q)
     );
@@ -535,8 +661,41 @@ export class SchemaManagerComponent {
           return new Set(set);
         });
       },
-      error: () => this.isSaving.set(false)
+      error: () => {
+         this.isSaving.set(false);
+         // In a real app we'd show a notification here
+      }
     });
+  }
+
+  saveAllChanges() {
+     const dirtyIds = Array.from(this.dirtyEntities());
+     if (dirtyIds.length === 0) return;
+     
+     this.isSaving.set(true);
+     const entitiesToSave = this.entities().filter(e => dirtyIds.includes(e.id));
+     
+     // Sequential save for reliability, or we could use forkJoin
+     let completed = 0;
+     const saveNext = () => {
+        if (completed >= entitiesToSave.length) {
+           this.isSaving.set(false);
+           return;
+        }
+        const entity = entitiesToSave[completed];
+        this.reportService.saveEntityMetadata(entity).subscribe({
+           next: () => {
+              this.dirtyEntities.update(set => { set.delete(entity.id); return new Set(set); });
+              completed++;
+              saveNext();
+           },
+           error: () => {
+              completed++;
+              saveNext();
+           }
+        });
+     };
+     saveNext();
   }
 
   generateSqlPreview() {

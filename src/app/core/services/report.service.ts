@@ -1,7 +1,7 @@
 import { inject, Injectable, signal } from '@angular/core';
 import { Apollo } from 'apollo-angular';
 import { catchError, map, of } from 'rxjs';
-import { GET_ENTITIES, GET_FIELDS, GET_REPORTS, GET_REPORT, RUN_REPORT, SAVE_REPORT, DELETE_REPORT, GET_AVAILABLE_TABLES, GET_AVAILABLE_DATABASES, GET_TABLE_COLUMNS, IMPORT_TABLE, DELETE_RELATIONSHIP, DELETE_ENTITY, SAVE_ENTITY_METADATA, SAVE_RELATIONSHIP } from '../graphql/queries';
+import { GET_ENTITIES, GET_ENTITY_DETAIL, GET_FIELDS, GET_REPORTS, GET_REPORT, RUN_REPORT, SAVE_REPORT, DELETE_REPORT, GET_AVAILABLE_TABLES, GET_AVAILABLE_DATABASES, GET_TABLE_COLUMNS, IMPORT_TABLE, IMPORT_TABLES, DELETE_RELATIONSHIP, DELETE_ENTITY, SAVE_ENTITY_METADATA, SAVE_RELATIONSHIP } from '../graphql/queries';
 import type { EntityMetadata, FieldMetadata, QueryResult, ReportDefinition, GridDefinition, FilterGroup } from '../models/report.models';
 
 import { NotificationService } from './notification.service';
@@ -51,6 +51,34 @@ export class ReportService {
         this.loading.set(false);
       }
     });
+  }
+
+  loadEntityDetail(id: string) {
+    const current = this.entities().find(e => e.id === id);
+    // If fields are already loaded, don't refetch
+    if (current && current.fields?.length > 0) return of(current);
+
+    return this.apollo.query<{ entity: EntityMetadata }>({
+      query: GET_ENTITY_DETAIL,
+      variables: { id },
+      fetchPolicy: 'cache-first'
+    }).pipe(
+      map(r => r.data?.entity),
+      map(detail => {
+        if (detail) {
+          this.entities.update(list => {
+            const index = list.findIndex(e => e.id === id);
+            if (index !== -1) {
+              const newList = [...list];
+              newList[index] = detail;
+              return newList;
+            }
+            return [...list, detail];
+          });
+        }
+        return detail;
+      })
+    );
   }
 
   getFields(entityName: string) {
@@ -293,6 +321,25 @@ export class ReportService {
       }),
       catchError(err => {
         this.notify.error('Import failed: ' + err.message);
+        throw err;
+      })
+    );
+  }
+
+  importTables(providerKey: string, tableNames: string[], database?: string) {
+    const inputs = tableNames.map(name => ({ providerKey, tableName: name, displayName: name, database }));
+    return this.apollo.mutate<{ importTables: EntityMetadata[] }>({
+      mutation: IMPORT_TABLES,
+      variables: { inputs }
+    }).pipe(
+      map(r => r.data?.importTables),
+      map(res => {
+        this.notify.success(`${tableNames.length} tables imported successfully!`);
+        this.loadEntities(); 
+        return res;
+      }),
+      catchError(err => {
+        this.notify.error('Bulk import failed: ' + err.message);
         throw err;
       })
     );

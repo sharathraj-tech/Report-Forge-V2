@@ -8,6 +8,7 @@ import { ReportDesignerComponent } from '../../features/report-designer/report-d
 import { DashboardCanvasComponent } from '../../features/dashboard/dashboard-canvas.component';
 import { QueryModuleComponent } from '../../features/query-module/query-module.component';
 import { SchemaManagerComponent } from '../../features/schema-manager/schema-manager.component';
+import { EmbedManagerComponent } from '../../features/embed/embed-manager.component';
 import { NotificationService } from '../../core/services/notification.service';
 import { Router, ActivatedRoute, NavigationEnd } from '@angular/router';
 import { filter, tap } from 'rxjs';
@@ -24,7 +25,8 @@ import type { ReportDefinition } from '../../core/models/report.models';
     ReportDesignerComponent,
     DashboardCanvasComponent,
     QueryModuleComponent,
-    SchemaManagerComponent
+    SchemaManagerComponent,
+    EmbedManagerComponent
   ],
   template: `
     <div class="flex flex-col h-screen overflow-hidden bg-background anim-fade">
@@ -61,6 +63,14 @@ import type { ReportDefinition } from '../../core/models/report.models';
               (click)="switchPersona('schema')">
               Schema
               <div *ngIf="persona() === 'schema'" class="absolute bottom-0 left-0 right-0 h-0.5 bg-brand-blue"></div>
+            </button>
+            <button 
+              class="text-[13px] font-semibold transition-colors relative h-14"
+              [class.text-brand-blue]="persona() === 'embed'"
+              [class.text-muted-foreground]="persona() !== 'embed'"
+              (click)="switchPersona('embed')">
+              Embed
+              <div *ngIf="persona() === 'embed'" class="absolute bottom-0 left-0 right-0 h-0.5 bg-brand-blue"></div>
             </button>
           </nav>
         </div>
@@ -205,6 +215,7 @@ import type { ReportDefinition } from '../../core/models/report.models';
               </ng-container>
               <rf-query-module *ngIf="persona() === 'customer'"></rf-query-module>
               <rf-schema-manager *ngIf="persona() === 'schema'"></rf-schema-manager>
+              <rf-embed-manager *ngIf="persona() === 'embed'"></rf-embed-manager>
            </main>
         </div>
 
@@ -251,7 +262,7 @@ export class ShellComponent implements OnInit {
   rightCollapsed = signal(false);
   isRunning = signal(false);
   activeNav = signal<'my-queries' | 'shared' | 'dashboards' | 'favorites'>('my-queries');
-  persona = signal<'developer' | 'customer' | 'schema'>('developer');
+  persona = signal<'developer' | 'customer' | 'schema' | 'embed'>('developer');
   searchQuery = '';
   isLoadingReports = signal(false);
   router = inject(Router);
@@ -314,12 +325,14 @@ export class ShellComponent implements OnInit {
       this.persona.set('customer');
     } else if (url.includes('schema')) {
       this.persona.set('schema');
+    } else if (url.includes('embed')) {
+      this.persona.set('embed');
     } else {
       this.persona.set('developer');
     }
   }
 
-  switchPersona(p: 'developer' | 'customer' | 'schema') {
+  switchPersona(p: 'developer' | 'customer' | 'schema' | 'embed') {
     this.router.navigate([p]);
   }
 
