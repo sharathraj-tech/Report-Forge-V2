@@ -23,6 +23,10 @@ export class NotificationService {
   warning(message: string) { this.notify(message, 'warning', 4000); }
   info(message: string) { this.notify(message, 'info'); }
 
+  validationWarning(message: string) {
+    this.notify(message, 'warning', 5000);
+  }
+
   /**
    * Shows a confirmation dialog (DevExtreme Confirm)
    */

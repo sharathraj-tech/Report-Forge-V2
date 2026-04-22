@@ -114,9 +114,14 @@ export class ReportService {
     page?: number;
     pageSize?: number;
   }) {
+    const sanitizedInput = {
+      ...input,
+      filters: input.filters ? this.sanitizeFilters(input.filters) : undefined
+    };
+
     return this.apollo.query<{ runReport: QueryResult }>({
       query: RUN_REPORT,
-      variables: { input },
+      variables: { input: sanitizedInput },
       fetchPolicy: 'network-only'
     }).pipe(map(r => r.data?.runReport));
   }
@@ -424,5 +429,18 @@ export class ReportService {
         return res;
       })
     );
+  }
+
+  private sanitizeFilters(group: FilterGroup): any {
+    return {
+      logic: group.logic,
+      conditions: (group.conditions || []).map(c => ({
+        field: c.field,
+        operator: c.operator,
+        value: c.value,
+        values: c.values
+      })),
+      groups: (group.groups || []).map(g => this.sanitizeFilters(g))
+    };
   }
 }

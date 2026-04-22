@@ -1,12 +1,13 @@
-import { Component, inject, signal, computed, effect, ChangeDetectionStrategy, DestroyRef } from '@angular/core';
+import { Component, inject, signal, computed, effect, ChangeDetectionStrategy, DestroyRef, ViewChild } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { Subject, debounceTime, distinctUntilChanged } from 'rxjs';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
-import { DxDataGridModule, DxTabsModule, DxButtonModule, DxPopupModule, DxFormModule, DxSelectBoxModule, DxTextBoxModule, DxCheckBoxModule, DxTextAreaModule, DxScrollViewModule, DxLoadPanelModule, DxListModule } from 'devextreme-angular';
+import { DxDataGridModule, DxTabsModule, DxButtonModule, DxPopupModule, DxFormModule, DxSelectBoxModule, DxTextBoxModule, DxCheckBoxModule, DxTextAreaModule, DxScrollViewModule, DxLoadPanelModule, DxListModule, DxValidatorModule, DxValidationGroupModule, DxValidationGroupComponent, DxTagBoxModule } from 'devextreme-angular';
 import { ReportService } from '../../core/services/report.service';
-import type { EntityMetadata, FieldMetadata, EntityRelationship } from '../../core/models/report.models';
-import { SchemaDiscoveryComponent } from '../developer/schema-discovery.component';
+import { NotificationService } from '../../core/services/notification.service';
+import { FilterGroupComponent } from '../query-builder/filter-group/filter-group.component';
+import type { EntityMetadata, FieldMetadata, EntityRelationship, JoinCondition, FilterGroup } from '../../core/models/report.models';
 
 @Component({
   selector: 'rf-schema-manager',
@@ -14,530 +15,558 @@ import { SchemaDiscoveryComponent } from '../developer/schema-discovery.componen
   imports: [
     CommonModule, FormsModule, DxDataGridModule, DxTabsModule, DxButtonModule, 
     DxPopupModule, DxFormModule, DxSelectBoxModule, DxTextBoxModule, DxCheckBoxModule,
-    DxTextAreaModule, DxScrollViewModule, DxLoadPanelModule, DxListModule, SchemaDiscoveryComponent
+    DxTextAreaModule, DxScrollViewModule, DxLoadPanelModule, DxListModule,
+    DxValidatorModule, DxValidationGroupModule, DxTagBoxModule, FilterGroupComponent
   ],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
-    <div class="h-full flex flex-col bg-slate-50/50 overflow-hidden">
+    <div class="h-full flex flex-col bg-white overflow-hidden anim-fade">
       <!-- Compact Header -->
-      <header class="bg-white border-b border-slate-200 px-6 py-3 flex items-center justify-between shadow-sm z-20">
-        <div class="flex items-center gap-4">
-            <div class="p-2 bg-indigo-600 rounded-xl shadow-md shadow-indigo-100 relative overflow-hidden group">
-               <span class="material-icons text-white relative z-10 text-xl leading-none">account_tree</span>
-               <div class="absolute inset-0 bg-gradient-to-tr from-black/10 to-transparent"></div>
+      <header class="bg-white border-b border-slate-200 px-4 py-2 flex items-center justify-between shrink-0">
+        <div class="flex items-center gap-3">
+            <div class="w-8 h-8 bg-slate-900 rounded-lg flex items-center justify-center text-white">
+               <span class="material-icons text-sm">account_tree</span>
             </div>
             <div>
-               <h1 class="text-xl font-black text-slate-900 tracking-tight leading-none">Schema Manager</h1>
-               <div class="flex items-center gap-2 mt-1">
-                  @if (dirtyEntities().size > 0) {
-                     <span class="flex h-1.5 w-1.5 relative">
-                       <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75"></span>
-                       <span class="relative inline-flex rounded-full h-1.5 w-1.5 bg-amber-500"></span>
-                     </span>
-                     <span class="text-[9px] font-bold text-amber-600 uppercase tracking-widest">{{ dirtyEntities().size }} UNSAVED CHANGES</span>
-                  } @else {
-                     <span class="flex h-1.5 w-1.5 relative">
-                       <span class="relative inline-flex rounded-full h-1.5 w-1.5 bg-emerald-500"></span>
-                     </span>
-                     <span class="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Metadata Synced</span>
-                  }
+               <h1 class="text-sm font-black text-slate-900 tracking-tight leading-none uppercase">Schema Designer</h1>
+               <div class="flex items-center gap-1.5 mt-1">
+                  <div class="h-1.5 w-1.5 rounded-full" [class.bg-emerald-500]="dirtyEntities().size === 0" [class.bg-amber-500]="dirtyEntities().size > 0"></div>
+                  <span class="text-[9px] font-bold text-slate-400 uppercase tracking-widest">
+                    {{ dirtyEntities().size > 0 ? dirtyEntities().size + ' Changes Pending' : 'Schema Synced' }}
+                  </span>
                </div>
             </div>
         </div>
 
         <div class="flex items-center gap-2">
-           <button class="w-9 h-9 flex items-center justify-center rounded-xl hover:bg-slate-100 transition-colors group" (click)="loadInitialData()">
-              <span class="material-icons text-slate-400 group-hover:rotate-180 transition-transform duration-500 text-lg">refresh</span>
+           <button class="rf-compact-btn-outline h-8 px-3" (click)="openBulkImport()">
+              <span class="material-icons text-sm">download</span>
+              <span>BULK IMPORT</span>
            </button>
            
-           @if (dirtyEntities().size > 1) {
-              <button (click)="saveAllChanges()" [disabled]="isSaving()" class="bg-amber-500 hover:bg-amber-600 text-white font-bold flex items-center gap-2 px-5 h-9 rounded-xl shadow-lg shadow-amber-100 transition-all active:scale-95 disabled:opacity-50">
-                 <span class="material-icons text-base">save_as</span>
-                 <span class="text-xs">SAVE ALL</span>
-              </button>
-           }
+           <div class="h-4 w-px bg-slate-200 mx-1"></div>
 
-           <button 
-             class="bg-indigo-50 hover:bg-indigo-100 text-indigo-600 font-bold flex items-center gap-2 px-5 h-9 rounded-xl transition-all active:scale-95"
-             (click)="isDiscoveryPopupVisible.set(true)"
-           >
-              <span class="material-icons text-base">manage_search</span>
-              <span class="text-xs">DISCOVER</span>
+           <button class="w-8 h-8 flex items-center justify-center rounded-md hover:bg-slate-100 text-slate-400" (click)="loadInitialData()">
+              <span class="material-icons text-lg" [class.animate-spin]="isDetailLoading()">refresh</span>
            </button>
            
            <button 
-             class="bg-indigo-600 hover:bg-indigo-700 text-white font-bold flex items-center gap-2 px-5 h-9 rounded-xl shadow-md shadow-indigo-100 transition-all active:scale-95 disabled:opacity-50"
+             class="rf-compact-btn-primary h-8 px-4 shadow-sm disabled:opacity-50"
              [disabled]="!saveEnabled() || isSaving()"
-             (click)="saveChanges()"
+             (click)="onProvisionClick()"
            >
-              <span class="material-icons text-base">{{ isSaving() ? 'hourglass_top' : 'cloud_upload' }}</span>
-              <span class="text-xs">{{ isSaving() ? 'SAVING...' : 'PROVISION' }}</span>
+              <span class="material-icons text-sm">{{ isSaving() ? 'hourglass_top' : 'cloud_upload' }}</span>
+              <span>{{ isSaving() ? 'PROVISION' : 'SAVE' }}</span>
            </button>
         </div>
       </header>
 
       <div class="flex-1 flex overflow-hidden">
         <!-- Compact Sidebar -->
-        <aside class="w-72 bg-white border-r border-slate-200 flex flex-col shadow-sm z-10">
-          <div class="p-3 border-b bg-slate-50/30">
-             <div class="relative group">
-                <span class="material-icons absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-indigo-600 transition-colors z-10 text-base">search</span>
+        <aside class="w-64 border-r border-slate-200 flex flex-col bg-slate-50/50 shrink-0">
+          <div class="p-3 border-b border-slate-200">
+             <div class="relative">
+                <span class="material-icons absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-sm">search</span>
                 <input 
-                  type="text" 
-                  [ngModel]="searchQuery()"
-                  (ngModelChange)="onSearchChange($event)"
-                  placeholder="Filter tables..." 
-                  class="w-full pl-9 pr-3 py-2 bg-white border border-slate-200 rounded-xl text-xs focus:ring-2 focus:ring-indigo-500/10 focus:border-indigo-500 transition-all outline-none"
+                   type="text" 
+                   [ngModel]="searchQuery()"
+                   (ngModelChange)="onSearchChange($event)"
+                   placeholder="Search schema..." 
+                   class="rf-compact-input w-full pl-9 h-8"
                 />
              </div>
           </div>
 
-          <div class="flex-1 overflow-hidden relative">
-             <dx-list
-               [dataSource]="filteredEntities()"
-               [searchEnabled]="false"
-               [pageLoadMode]="pageLoadMode"
-               [height]="'100%'"
-               [noDataText]="'No entities found'"
-               keyExpr="id"
-               class="schema-entity-list"
-             >
-               <div *dxTemplate="let e of 'item'">
-                  <button 
-                    (click)="selectedEntityId.set(e.id)"
-                    class="w-full text-left p-3 rounded-2xl transition-all flex items-center justify-between group relative overflow-hidden mb-1"
-                    [class]="selectedEntityId() === e.id ? 'bg-indigo-600 shadow-lg shadow-indigo-200 -translate-y-0.5' : 'hover:bg-slate-50'"
-                  >
-                    <div class="flex flex-col gap-0.5 z-10">
-                       <span class="text-[12px] font-black tracking-tight" [class.text-white]="selectedEntityId() === e.id" [class.text-slate-800]="selectedEntityId() !== e.id">{{ e.displayName || e.name }}</span>
-                       <div class="flex items-center gap-2">
-                          <span class="text-[8px] font-mono uppercase font-bold opacity-60" [class.text-indigo-100]="selectedEntityId() === e.id" [class.text-slate-400]="selectedEntityId() !== e.id">{{ e.tableName }}</span>
-                          @if (!e.isActive) {
-                             <span class="text-[7px] font-black px-1 rounded uppercase tracking-tighter" [class.bg-white/20]="selectedEntityId() === e.id" [class.text-white]="selectedEntityId() === e.id" [class.bg-slate-100]="selectedEntityId() !== e.id" [class.text-slate-400]="selectedEntityId() !== e.id">Hidden</span>
-                          }
-                       </div>
-                    </div>
-                    
-                    @if (isDirty(e.id)) {
-                      <div class="flex items-center gap-1.5 z-10">
-                         <span class="text-[8px] font-black uppercase" [class.text-indigo-200]="selectedEntityId() === e.id" [class.text-amber-500]="selectedEntityId() !== e.id">Dirty</span>
-                         <span class="w-1.5 h-1.5 rounded-full" [class.bg-white]="selectedEntityId() === e.id" [class.bg-amber-400]="selectedEntityId() !== e.id"></span>
-                      </div>
-                    }
-
-                    <div *ngIf="selectedEntityId() === e.id" class="absolute inset-0 bg-gradient-to-br from-white/10 to-transparent pointer-events-none"></div>
-                  </button>
+          <div class="flex-1 overflow-y-auto custom-scrollbar">
+             @if (entities().length === 0) {
+               <div class="p-4 space-y-2 text-center py-12">
+                  <span class="material-icons text-slate-200 text-4xl mb-2">inbox</span>
+                  <p class="text-[10px] font-black text-slate-300 uppercase tracking-widest">No Entities Provisioned</p>
                </div>
-             </dx-list>
+             }
+             @for (e of filteredEntities(); track e.id) {
+                <div (click)="selectedEntityId.set(e.id)" 
+                     [class.bg-slate-700]="selectedEntityId() === e.id"
+                     [class.text-white]="selectedEntityId() === e.id"
+                     class="group flex items-center justify-between p-2 rounded cursor-pointer hover:bg-slate-700 transition-all border border-transparent"
+                     [class.border-blue-500]="selectedEntityId() === e.id">
+                   <div class="flex items-center gap-2 overflow-hidden">
+                      <i class="dx-icon-fields text-slate-400 group-hover:text-blue-400"></i>
+                      <div class="flex flex-col overflow-hidden">
+                         <span class="text-[11px] font-bold truncate">{{e.displayName || e.name}}</span>
+                         <span class="text-[9px] text-slate-500 truncate" *ngIf="e.database">{{e.database}}.{{e.schema}}</span>
+                      </div>
+                   </div>
+                   
+                   <div class="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                      <button (click)="onDeleteEntity(e, $event)" class="w-6 h-6 flex items-center justify-center rounded hover:bg-red-500/20 text-slate-500 hover:text-red-400">
+                         <i class="dx-icon-trash text-[12px]"></i>
+                      </button>
+                      <div *ngIf="dirtyEntities().has(e.id)" class="w-1.5 h-1.5 rounded-full bg-orange-500 animate-pulse"></div>
+                   </div>
+                </div>
+             }
           </div>
         </aside>
 
         <!-- Main Content -->
-        <main class="flex-1 flex flex-col overflow-hidden">
-          <!-- Compact Tabs -->
-          <div class="bg-white border-b px-6 pt-1 shadow-sm relative z-10">
-             <dx-tabs
-               [dataSource]="tabs"
-               [(selectedIndex)]="tabIndex"
-               class="compact-tabs"
-             ></dx-tabs>
-          </div>
+        <main class="flex-1 flex flex-col overflow-hidden bg-white">
+          <dx-validation-group #validationGroup>
+            <!-- Compact Tabs -->
+            <div class="border-b border-slate-200 px-4 flex items-center gap-1 shrink-0 bg-slate-50/30">
+               @for (tab of tabs; track $index) {
+                 <button 
+                   class="px-4 h-10 text-[11px] font-black uppercase tracking-widest transition-all relative"
+                   [class.text-brand-primary]="tabIndex() === $index"
+                   [class.text-slate-400]="tabIndex() !== $index"
+                   (click)="tabIndex.set($index)">
+                   {{ tab.text }}
+                   <div *ngIf="tabIndex() === $index" class="absolute bottom-0 left-2 right-2 h-0.5 bg-brand-primary rounded-t-full"></div>
+                 </button>
+               }
+            </div>
 
-          <div class="flex-1 relative">
-            <dx-scroll-view width="100%" height="100%" class="modern-scroll-view">
-              <div class="p-6 pb-20">
-                <!-- Entity Details / Fields Tab -->
-                @if (tabIndex() === 0) {
-                  @if (isDetailLoading()) {
-                      <div class="max-w-6xl mx-auto flex flex-col gap-6 animate-pulse">
+            <div class="flex-1 overflow-hidden relative">
+              <dx-scroll-view width="100%" height="100%" class="custom-scrollbar">
+                <div class="p-6 max-w-5xl mx-auto">
+                  <!-- Entity Details / Fields Tab -->
+                  @if (tabIndex() === 0) {
+                    @if (isDetailLoading()) {
+                        <div class="space-y-6">
+                           <div class="grid grid-cols-4 gap-4">
+                              @for (i of [1,2,3,4]; track i) { <div class="h-16 skeleton"></div> }
+                           </div>
+                           <div class="h-32 skeleton"></div>
+                           <div class="h-64 skeleton"></div>
+                        </div>
+                     } @else if (selectedEntity(); as e) {
+                      <div class="flex flex-col gap-6 anim-fade">
+                         <!-- Stats Grid -->
                          <div class="grid grid-cols-4 gap-4">
-                            @for (i of [1,2,3,4]; track i) {
-                               <div class="bg-white h-16 rounded-2xl border border-slate-100 shadow-sm"></div>
+                            @for (stat of [
+                              { label: 'Provider', value: e.providerKey, icon: 'storage' },
+                              { label: 'Resource', value: (e.database || 'Default') + '.' + (e.schema || 'dbo'), icon: 'dns' },
+                              { label: 'Fields', value: e.fields.length, icon: 'list' },
+                              { label: 'Links', value: (e.relationships || []).length, icon: 'link' }
+                            ]; track $index) {
+                              <div class="bg-slate-50 p-3 rounded-lg border border-slate-200 flex items-center gap-3">
+                                 <span class="material-icons text-slate-400 text-sm">{{ stat.icon }}</span>
+                                 <div class="min-w-0">
+                                    <span class="text-[8px] font-black text-slate-400 uppercase tracking-widest block">{{ stat.label }}</span>
+                                    <span class="text-[11px] font-bold text-slate-700 truncate block">{{ stat.value }}</span>
+                                 </div>
+                              </div>
                             }
                          </div>
-                         <div class="bg-white h-40 rounded-2xl border border-slate-100 shadow-sm"></div>
-                         <div class="bg-white h-[400px] rounded-2xl border border-slate-100 shadow-sm"></div>
-                      </div>
-                   } @else if (selectedEntity(); as e) {
-                    <div class="max-w-6xl mx-auto flex flex-col gap-6">
-                       <!-- Compact Meta Stats -->
-                       <div class="grid grid-cols-4 gap-4">
-                          @for (stat of [
-                            { label: 'Provider', value: e.providerKey, icon: 'storage', color: 'blue' },
-                            { label: 'Table', value: e.tableName, icon: 'table_chart', color: 'indigo' },
-                            { label: 'Columns', value: e.fields.length, icon: 'format_list_numbered', color: 'amber' },
-                            { label: 'Relations', value: e.relationships.length, icon: 'share_arrival_time', color: 'emerald' }
-                          ]; track $index) {
-                            <div class="bg-white p-3 rounded-2xl border border-slate-100 shadow-sm flex items-center gap-3">
-                               <div class="w-9 h-9 rounded-xl flex items-center justify-center" [class]="'bg-' + stat.color + '-50 text-' + stat.color + '-600'">
-                                  <span class="material-icons text-base">{{ stat.icon }}</span>
-                               </div>
-                               <div>
-                                  <span class="text-[8px] font-black text-slate-400 uppercase tracking-widest block">{{ stat.label }}</span>
-                                  <span class="text-xs font-black text-slate-800">{{ stat.value }}</span>
+
+                         <!-- Basic Config (Advanced Multi-DB Support) -->
+                         <div class="bg-white rounded-lg border border-slate-200 p-5 space-y-4 shadow-sm">
+                            <div class="flex items-center justify-between border-b border-slate-100 pb-3">
+                               <span class="text-[10px] font-black text-slate-400 uppercase tracking-widest">Metadata Configuration</span>
+                               <div class="flex items-center gap-2">
+                                  <dx-check-box [(value)]="e.isActive" (onValueChanged)="markDirty(e.id)"></dx-check-box>
+                                  <span class="text-[10px] font-bold uppercase text-slate-600">{{ e.isActive ? 'Active' : 'Inactive' }}</span>
                                </div>
                             </div>
-                          }
-                       </div>
 
-                       <!-- Compact Settings -->
-                       <div class="bg-white rounded-2xl border border-slate-100 shadow-sm p-6 flex flex-col gap-6">
-                          <div class="flex items-center justify-between">
-                             <h3 class="text-sm font-black text-slate-800 uppercase tracking-widest">Metadata Config</h3>
-                             <div class="flex items-center gap-3">
-                                <dx-check-box [(value)]="e.isActive" (onValueChanged)="markDirty(e.id)" class="modern-checkbox-sm"></dx-check-box>
-                                <span class="text-[10px] font-bold text-slate-500 uppercase">{{ e.isActive ? 'Active' : 'Inactive' }}</span>
-                             </div>
-                          </div>
+                            <div class="grid grid-cols-12 gap-4">
+                               <div class="col-span-4 space-y-1.5">
+                                  <label class="text-[9px] font-black text-slate-400 uppercase">Alias Name</label>
+                                  <dx-text-box [(value)]="e.displayName" (onValueChanged)="markDirty(e.id)" class="rf-compact-input w-full font-bold text-brand-primary">
+                                     <dx-validator><dxi-validation-rule type="required"></dxi-validation-rule></dx-validator>
+                                  </dx-text-box>
+                               </div>
+                               <div class="col-span-3 space-y-1.5">
+                                  <label class="text-[9px] font-black text-slate-400 uppercase">Database</label>
+                                  <dx-text-box [value]="e.database || ''" (onValueChanged)="e.database = $event.value; markDirty(e.id)" placeholder="Optional DB name..." class="rf-compact-input w-full" />
+                               </div>
+                               <div class="col-span-2 space-y-1.5">
+                                  <label class="text-[9px] font-black text-slate-400 uppercase">Schema</label>
+                                  <dx-text-box [(value)]="e.schema" (onValueChanged)="markDirty(e.id)" placeholder="dbo" class="rf-compact-input w-full" />
+                               </div>
+                               <div class="col-span-3 space-y-1.5">
+                                  <label class="text-[9px] font-black text-slate-400 uppercase">Physical Table</label>
+                                  <dx-text-box [(value)]="e.tableName" (onValueChanged)="markDirty(e.id)" class="rf-compact-input w-full bg-slate-50/50" [readOnly]="true" />
+                               </div>
+                               <div class="col-span-12 space-y-1.5">
+                                  <label class="text-[9px] font-black text-slate-400 uppercase">Functional Description</label>
+                                  <dx-text-box [value]="e.description || ''" (onValueChanged)="e.description = $event.value; markDirty(e.id)" class="rf-compact-input w-full" placeholder="Internal documentation for analysts..." />
+                               </div>
+                            </div>
+                         </div>
 
-                          <div class="grid grid-cols-3 gap-6">
-                             <div class="flex flex-col gap-1.5">
-                                <label class="text-[9px] font-black text-slate-400 uppercase ml-1">Display Label</label>
-                                <input 
-                                  type="text" 
-                                  [(ngModel)]="e.displayName" 
-                                  class="w-full px-3 py-2 bg-slate-50 border border-slate-100 rounded-xl text-sm font-bold text-indigo-600 focus:ring-2 focus:ring-indigo-500/10 transition-all outline-none"
-                                  (change)="markDirty(e.id)"
-                                />
-                             </div>
-                             <div class="col-span-2 flex flex-col gap-1.5">
-                                <label class="text-[9px] font-black text-slate-400 uppercase ml-1">Description</label>
-                                <input 
-                                  type="text" 
-                                  [(ngModel)]="e.description" 
-                                  placeholder="Dataset purpose..."
-                                  class="w-full px-3 py-2 bg-slate-50 border border-slate-100 rounded-xl text-xs text-slate-600 focus:ring-2 focus:ring-indigo-500/10 transition-all outline-none"
-                                  (change)="markDirty(e.id)"
-                                />
-                             </div>
-                          </div>
-                       </div>
+                         <!-- Fields Grid -->
+                         <div class="bg-white rounded-lg border border-slate-200 overflow-hidden shadow-sm flex flex-col">
+                            <div class="px-4 py-2 border-b border-slate-200 bg-slate-50 flex items-center justify-between">
+                               <div class="flex items-center gap-2">
+                                  <span class="material-icons text-slate-400 text-xs">list_alt</span>
+                                  <span class="text-[10px] font-black text-slate-500 uppercase tracking-widest">Attributes & Security Mapping</span>
+                               </div>
+                               <div class="flex items-center gap-3">
+                                  <button (click)="bulkToggleFields(e, true)" class="text-[9px] font-black text-brand-primary uppercase hover:underline">SHOW ALL</button>
+                                  <div class="h-3 w-px bg-slate-200"></div>
+                                  <button (click)="bulkToggleFields(e, false)" class="text-[9px] font-black text-slate-400 uppercase hover:underline">HIDE ALL</button>
+                               </div>
+                            </div>
+                            
+                            <div class="h-[400px]">
+                              <dx-data-grid
+                                [dataSource]="e.fields"
+                                [height]="'100%'"
+                                [showBorders]="false"
+                                [scrolling]="{ mode: 'virtual' }"
+                                [loadPanel]="{ enabled: false }"
+                              >
+                                <dxo-editing mode="cell" [allowUpdating]="true"></dxo-editing>
+                                <dxi-column dataField="isVisible" caption="" [width]="40" cellTemplate="checkTemplate"></dxi-column>
+                                <dxi-column dataField="name" caption="COLUMN" [allowEditing]="false" cellTemplate="monoTemplate"></dxi-column>
+                                <dxi-column dataField="displayName" caption="DISPLAY LABEL"></dxi-column>
+                                <dxi-column dataField="dataType" caption="TYPE" [width]="100">
+                                   <dxo-lookup [dataSource]="dataTypes"></dxo-lookup>
+                                </dxi-column>
+                                <dxi-column dataField="isSensitive" caption="PII" [width]="60" cellTemplate="lockTemplate"></dxi-column>
+                                <dxi-column [width]="40" cellTemplate="editTemplate"></dxi-column>
 
-                       <!-- Compact Fields Grid -->
-                       <div class="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden flex flex-col">
-                          <div class="px-6 py-3 border-b border-slate-50 flex items-center justify-between bg-slate-50/50">
-                             <h3 class="text-[10px] font-black text-slate-600 uppercase tracking-widest flex items-center gap-2">
-                                <span class="material-icons text-base">list</span>
-                                Schema Mapping ({{ e.fields.length }})
-                             </h3>
-                             <div class="flex items-center gap-2">
-                                <button (click)="bulkToggleFields(e, true)" class="px-2 py-1 text-[9px] font-black text-indigo-600 bg-indigo-50 rounded hover:bg-indigo-100 transition-colors uppercase">Show All</button>
-                                <button (click)="bulkToggleFields(e, false)" class="px-2 py-1 text-[9px] font-black text-slate-600 bg-slate-100 rounded hover:bg-slate-200 transition-colors uppercase">Hide All</button>
-                                <div class="h-4 w-px bg-slate-200 mx-1"></div>
-                                <button (click)="loadInitialData()" class="px-2 py-1 text-[9px] font-black text-emerald-600 bg-emerald-50 rounded hover:bg-emerald-100 transition-colors uppercase flex items-center gap-1">
-                                   <span class="material-icons text-[12px]">sync</span>
-                                   Sync
-                                </button>
-                             </div>
-                          </div>
-                          
-                          <div class="h-[500px]">
-                            <dx-data-grid
-                              [dataSource]="e.fields"
-                              [height]="'100%'"
-                              [showBorders]="false"
-                              [columnAutoWidth]="false"
-                              [scrolling]="{ mode: 'virtual', renderAsync: true }"
-                              class="premium-grid compact-grid"
-                            >
-                              <dxo-editing mode="cell" [allowUpdating]="true"></dxo-editing>
-                              
-                              <dxi-column dataField="isVisible" caption=" " [width]="45" cellTemplate="visibleTemplate" [allowEditing]="true"></dxi-column>
-                              <dxi-column dataField="name" caption="NAME" [allowEditing]="false" cellTemplate="nameTemplate"></dxi-column>
-                              <dxi-column dataField="displayName" caption="DISPLAY NAME"></dxi-column>
-                              <dxi-column dataField="dataType" caption="TYPE" [width]="100" cellTemplate="typeTemplate"></dxi-column>
-                              <dxi-column dataField="isSensitive" caption="SENSITIVE" [width]="90" cellTemplate="sensitiveTemplate"></dxi-column>
-                              <dxi-column [width]="60" [allowEditing]="false" cellTemplate="actionsTemplate"></dxi-column>
+                                <div *dxTemplate="let d of 'checkTemplate'">
+                                   <span class="material-icons text-xs" [class.text-brand-primary]="d.value" [class.text-slate-300]="!d.value">
+                                      {{ d.value ? 'check_circle' : 'circle' }}
+                                   </span>
+                                </div>
+                                <div *dxTemplate="let d of 'monoTemplate'"><span class="font-mono text-[10px] text-slate-400">{{ d.value }}</span></div>
+                                <div *dxTemplate="let d of 'lockTemplate'"><span *ngIf="d.value" class="material-icons text-xs text-rose-500">lock</span></div>
+                                <div *dxTemplate="let d of 'editTemplate'">
+                                   <button class="text-slate-400 hover:text-brand-primary" (click)="editField(d.data)"><span class="material-icons text-sm">settings</span></button>
+                                </div>
+                              </dx-data-grid>
+                            </div>
+                         </div>
+                      </div>
+                     }
+                  }
 
-                              <div *dxTemplate="let d of 'visibleTemplate'">
-                                 <span class="material-icons text-[16px]" [class.text-indigo-600]="d.value" [class.text-slate-300]="!d.value">
-                                    {{ d.value ? 'visibility' : 'visibility_off' }}
-                                 </span>
+                  <!-- Relationships Tab -->
+                  @if (tabIndex() === 1) {
+                    <div class="flex flex-col gap-4 anim-fade">
+                        <div class="flex items-center justify-between">
+                           <div class="flex items-center gap-2">
+                              <span class="material-icons text-slate-400 text-sm">link</span>
+                              <span class="text-[10px] font-black text-slate-400 uppercase tracking-widest">Enterprise Knowledge Links</span>
+                           </div>
+                           <div class="flex items-center gap-2">
+                              <button class="rf-compact-btn-outline px-3 h-8 shadow-sm" (click)="checkConsistency()">
+                                 <span class="material-icons text-sm">fact_check</span>
+                                 <span>VALIDATE LINKS</span>
+                              </button>
+                              <button class="rf-compact-btn-primary px-3 h-8 shadow-sm" (click)="addRelationship()">
+                                 <span class="material-icons text-sm">add</span>
+                                 <span>ESTABLISH LINK</span>
+                              </button>
+                           </div>
+                        </div>
+
+                        @if (consistencyErrors().length > 0) {
+                           <div class="bg-red-50 border border-red-100 rounded-lg p-3 anim-fade">
+                              <div class="flex items-center gap-2 text-red-600 mb-2">
+                                 <span class="material-icons text-sm text-[14px]">warning</span>
+                                 <span class="text-[10px] font-black uppercase tracking-widest">Consistency Issues ({{consistencyErrors().length}})</span>
                               </div>
+                              <ul class="space-y-1">
+                                 @for (err of consistencyErrors(); track $index) {
+                                    <li class="text-[10px] text-red-500 flex items-start gap-2">
+                                       <span class="mt-1.5 w-1 h-1 rounded-full bg-red-400 shrink-0"></span>
+                                       {{err}}
+                                    </li>
+                                 }
+                              </ul>
+                           </div>
+                        }
 
-                              <div *dxTemplate="let d of 'nameTemplate'">
-                                 <span class="font-mono text-[10px] font-bold text-slate-500">{{ d.value }}</span>
-                              </div>
+                        <div class="bg-white rounded-lg border border-slate-200 overflow-hidden shadow-sm h-[500px] overflow-y-auto custom-scrollbar">
+                           <div class="flex flex-col divide-y divide-slate-100">
+                              @for (rel of relationships(); track rel.id) {
+                                 <div class="p-4 hover:bg-slate-50 transition-all group">
+                                    <div class="flex items-center justify-between">
+                                       <div class="flex items-center gap-3">
+                                          <div class="flex flex-col items-center">
+                                             <span class="text-[10px] font-black text-slate-400 uppercase tracking-tighter">Source</span>
+                                             <span class="text-[11px] font-bold text-slate-700">{{ getEntityName(rel.sourceEntityId) }}</span>
+                                          </div>
+                                          <i class="dx-icon-arrowright text-slate-300"></i>
+                                          <div class="flex flex-col items-center">
+                                             <span class="text-[10px] font-black text-slate-400 uppercase tracking-tighter">Target</span>
+                                             <span class="text-[11px] font-bold text-slate-700">{{ getEntityName(rel.targetEntityId) }}</span>
+                                          </div>
+                                       </div>
 
-                              <div *dxTemplate="let d of 'typeTemplate'">
-                                 <div class="flex items-center gap-1.5">
-                                    <span class="material-icons text-[14px] text-slate-400">
-                                       {{ d.value === 'number' || d.value === 'decimal' ? 'calculate' : d.value === 'datetime' ? 'event' : d.value === 'boolean' ? 'toggle_on' : 'title' }}
-                                    </span>
-                                    <span class="text-[10px] font-bold uppercase">{{ d.value }}</span>
+                                       <div class="flex items-center gap-2">
+                                          <span class="px-2 py-0.5 rounded bg-slate-100 text-slate-500 text-[9px] font-black">{{ rel.joinType }}</span>
+                                          <button (click)="openRelationshipEditor(rel)" class="w-7 h-7 flex items-center justify-center rounded hover:bg-blue-50 text-slate-400 hover:text-blue-500">
+                                             <i class="dx-icon-edit text-xs"></i>
+                                          </button>
+                                          <button (click)="onDeleteRelationship(rel.id)" class="w-7 h-7 flex items-center justify-center rounded hover:bg-red-50 text-slate-400 hover:text-red-500">
+                                             <i class="dx-icon-trash text-xs"></i>
+                                          </button>
+                                       </div>
+                                    </div>
+                                    
+                                    <div class="mt-2 flex flex-wrap gap-2">
+                                       @for (cond of rel.conditions; track $index) {
+                                          <div class="text-[9px] font-mono bg-slate-50 border border-slate-100 px-2 py-1 rounded text-slate-400">
+                                             {{ cond.leftField }} {{ cond.operator }} {{ cond.rightField }}
+                                          </div>
+                                       }
+                                       @if (!rel.conditions || rel.conditions.length === 0) {
+                                          <div class="text-[9px] font-mono text-slate-300 italic">{{ rel.sourceField }} ↔ {{ rel.targetField }}</div>
+                                       }
+                                    </div>
                                  </div>
-                              </div>
-
-                              <div *dxTemplate="let d of 'sensitiveTemplate'">
-                                 <div class="flex items-center justify-center">
-                                    <span *ngIf="d.value" class="material-icons text-[16px] text-rose-500">lock</span>
-                                    <span *ngIf="!d.value" class="material-icons text-[16px] text-slate-200">lock_open</span>
+                              }
+                              @if (relationships().length === 0) {
+                                 <div class="h-full flex flex-col items-center justify-center text-center p-12">
+                                    <i class="dx-icon-link text-slate-200 text-5xl mb-4"></i>
+                                    <p class="text-xs font-black text-slate-400 uppercase tracking-widest">No relationships established</p>
                                  </div>
-                              </div>
-
-                              <div *dxTemplate="let d of 'actionsTemplate'">
-                                 <button class="w-6 h-6 flex items-center justify-center hover:bg-slate-100 rounded text-slate-400 hover:text-indigo-600 transition-all font-bold" (click)="editField(d.data)">
-                                    <span class="material-icons text-sm">settings</span>
-                                 </button>
-                              </div>
-                            </dx-data-grid>
-                          </div>
+                              }
+                           </div>
                         </div>
                      </div>
                   }
-                }
 
-                <!-- Compact Relationships -->
-                @if (tabIndex() === 1) {
-                  <div class="max-w-6xl mx-auto flex flex-col gap-6">
-                     <div class="flex items-center justify-between px-2">
-                        <div>
-                           <h2 class="text-sm font-black text-slate-900 tracking-tight uppercase">Relationship Hub</h2>
-                           <p class="text-[10px] text-slate-400 font-bold uppercase tracking-widest">Connect physical entities</p>
+                  <!-- Data Preview Tab -->
+                  @if (tabIndex() === 2) {
+                     <div class="flex flex-col gap-4 anim-fade h-full">
+                        <div class="flex items-center justify-between shrink-0">
+                           <div class="flex items-center gap-2">
+                              <span class="material-icons text-slate-400 text-sm">preview</span>
+                              <span class="text-[10px] font-black text-slate-400 uppercase tracking-widest">Live Data Inspection (Top 50 Rows)</span>
+                           </div>
+                           <button class="rf-compact-btn-outline px-3 h-8" (click)="refreshPreview()">
+                              <span class="material-icons text-sm">refresh</span>
+                              <span>REFRESH SAMPLE</span>
+                           </button>
                         </div>
-                        <button class="bg-indigo-600 hover:bg-indigo-700 text-white font-bold h-8 px-5 rounded-xl text-[10px] shadow-sm flex items-center gap-2" (click)="addRelationship()">
-                           <span class="material-icons text-sm">add</span> NEW LINK
-                        </button>
-                     </div>
 
-                     <div class="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden h-[600px]">
-                        <dx-data-grid
-                           [dataSource]="relationships()"
-                           [height]="'100%'"
-                           [showBorders]="false"
-                           class="premium-grid compact-grid"
-                        >
-                           <dxo-editing mode="row" [allowUpdating]="false" [allowDeleting]="true"></dxo-editing>
-                           <dxi-column dataField="sourceEntityId" [groupIndex]="0">
-                              <dxo-lookup [dataSource]="entityLookup()" valueExpr="id" displayExpr="displayName"></dxo-lookup>
-                           </dxi-column>
-                           <dxi-column dataField="targetEntityId" caption="TARGET ENTITY">
-                              <dxo-lookup [dataSource]="entityLookup()" valueExpr="id" displayExpr="displayName"></dxo-lookup>
-                           </dxi-column>
-                           <dxi-column dataField="conditions" caption="JOIN KEY" cellTemplate="condTemplate"></dxi-column>
-                           <dxi-column dataField="joinType" caption="TYPE" [width]="80"></dxi-column>
-                           <dxi-column [width]="80" cellTemplate="relActionsTemplate"></dxi-column>
+                        <!-- Preview Filters -->
+                        <div class="bg-slate-50 border border-slate-200 rounded-lg p-3 shrink-0">
+                           <div class="flex items-center justify-between mb-3">
+                              <span class="text-[10px] font-black text-slate-400 uppercase tracking-widest">Preview Filters</span>
+                              <button (click)="previewFilters.set({ id: 'preview', logic: 'AND', conditions: [], groups: [] })" class="text-[9px] font-bold text-slate-400 hover:text-red-500 uppercase">Clear All</button>
+                           </div>
+                           <rf-filter-group [group]="previewFilters()" [fields]="currentFields()" />
+                        </div>
 
-                           <div *dxTemplate="let d of 'condTemplate'">
-                              <div class="flex flex-wrap gap-1">
-                                 @for (c of d.data.conditions; track $index) {
-                                    <span class="bg-slate-50 px-1.5 py-0.5 rounded text-[9px] border border-slate-100 font-mono text-slate-500">
-                                       {{ c.leftField }} = {{ c.rightField }}
-                                    </span>
-                                 }
-                              </div>
-                           </div>
-                           <div *dxTemplate="let d of 'relActionsTemplate'">
-                              <div class="flex items-center gap-1">
-                                 <button class="w-6 h-6 flex items-center justify-center hover:bg-indigo-50 rounded text-slate-400 hover:text-indigo-600 transition-all font-bold" (click)="openRelationshipEditor(d.data)">
-                                    <span class="material-icons text-xs">edit</span>
-                                 </button>
-                                 <button class="w-6 h-6 flex items-center justify-center hover:bg-red-50 rounded text-slate-400 hover:text-red-500 transition-all font-bold" (click)="deleteRelationship(d.data.id)">
-                                    <span class="material-icons text-xs">delete</span>
-                                 </button>
-                              </div>
-                           </div>
-                        </dx-data-grid>
-                     </div>
-                  </div>
-                }
-              </div>
-            </dx-scroll-view>
-          </div>
+                       <div class="bg-white rounded-lg border border-slate-200 overflow-hidden shadow-sm h-[500px] relative">
+                          <dx-data-grid
+                             [dataSource]="previewData()"
+                             [height]="'100%'"
+                             [showBorders]="false"
+                             [scrolling]="{ mode: 'virtual' }"
+                          >
+                             <dxo-column-chooser [enabled]="true" mode="select"></dxo-column-chooser>
+                             <dxo-header-filter [visible]="true"></dxo-header-filter>
+                          </dx-data-grid>
+                          
+                          <dx-load-panel [visible]="isPreviewLoading()" [position]="{ of: 'parent' }" message="Querying source..."></dx-load-panel>
+                          @if (!isPreviewLoading() && previewData().length === 0) {
+                             <div class="absolute inset-0 flex flex-col items-center justify-center text-center p-12 bg-slate-50/50">
+                                <span class="material-icons text-slate-200 text-5xl mb-4">search_off</span>
+                                <p class="text-xs font-black text-slate-400 uppercase tracking-widest">No data available for preview</p>
+                             </div>
+                          }
+                       </div>
+                    </div>
+                  }
+
+                </div>
+              </dx-scroll-view>
+            </div>
+          </dx-validation-group>
         </main>
       </div>
 
-      <dx-load-panel [visible]="isSaving()" message="Syncing..."></dx-load-panel>
-
-      <!-- Compact Popups -->
-      <dx-popup [(visible)]="isFieldPopupVisible" [width]="450" [height]="'auto'" [showTitle]="false" [dragEnabled]="true" class="compact-popup">
-        <div *dxTemplate="let data of 'content'" class="p-6">
-           @if (editingField(); as field) {
-              <div class="flex flex-col gap-6">
-                 <div class="flex items-center gap-3">
-                    <span class="material-icons text-indigo-600">settings_input_component</span>
-                    <h3 class="text-base font-black text-slate-900 tracking-tight">Field Config</h3>
-                 </div>
-                 <dx-form [formData]="field" labelLocation="top" class="compact-form">
-                    <dxi-item dataField="displayName" label="Label" [editorOptions]="{ stylingMode: 'outlined' }"></dxi-item>
-                    <dxi-item dataField="dataType" editorType="dxSelectBox" [editorOptions]="{ items: dataTypes }"></dxi-item>
-                    <dxi-item itemType="group" [colCount]="4">
-                       <dxi-item dataField="isVisible" editorType="dxCheckBox" label="Vis"></dxi-item>
-                       <dxi-item dataField="isFilterable" editorType="dxCheckBox" label="Filt"></dxi-item>
-                       <dxi-item dataField="isSensitive" editorType="dxCheckBox" label="PII"></dxi-item>
-                       <dxi-item dataField="isIndexed" editorType="dxCheckBox" label="Idx"></dxi-item>
-                    </dxi-item>
-                 </dx-form>
-                 <div class="flex justify-end gap-2 pt-4 border-t">
-                    <button (click)="isFieldPopupVisible.set(false)" class="px-4 py-2 text-xs font-bold text-slate-500">Cancel</button>
-                    <button (click)="applyFieldChanges()" class="bg-indigo-600 text-white font-bold px-5 py-2 rounded-xl text-xs">Apply</button>
-                 </div>
+      <!-- Field Modal Overlay -->
+      <div *ngIf="isFieldPopupVisible()" class="rf-modal-overlay anim-fade" (click)="isFieldPopupVisible.set(false)">
+        <div class="rf-modal-content w-[400px]" (click)="$event.stopPropagation()">
+           <dx-validation-group #fieldValidationGroup>
+              <div class="px-5 py-3 border-b border-slate-200 bg-slate-50 flex items-center justify-between">
+                 <span class="text-[11px] font-black text-slate-800 uppercase tracking-widest">Field Configuration</span>
+                 <button (click)="isFieldPopupVisible.set(false)" class="text-slate-400 hover:text-slate-600"><span class="material-icons text-sm">close</span></button>
               </div>
-           }
+              <div class="p-5 space-y-4">
+                 @if (editingField(); as f) {
+                   <div class="space-y-1.5">
+                      <label class="text-[9px] font-black text-slate-400 uppercase">Display Label</label>
+                      <dx-text-box [(value)]="f.displayName" class="rf-compact-input w-full font-bold">
+                         <dx-validator><dxi-validation-rule type="required"></dxi-validation-rule></dx-validator>
+                      </dx-text-box>
+                   </div>
+                   <div class="grid grid-cols-2 gap-4">
+                      <div class="space-y-1.5">
+                         <label class="text-[9px] font-black text-slate-400 uppercase">Data Type</label>
+                         <dx-select-box [items]="dataTypes" [(value)]="f.dataType" class="compact-select"></dx-select-box>
+                      </div>
+                      <div class="flex flex-col justify-end pb-1">
+                         <div class="flex items-center gap-2">
+                           <dx-check-box [(value)]="f.isSensitive"></dx-check-box>
+                           <span class="text-[10px] font-bold text-slate-600">SENSITIVE / PII</span>
+                         </div>
+                      </div>
+                   </div>
+                   <div class="p-3 bg-slate-50 rounded-lg border border-slate-100 flex flex-col gap-2">
+                      <span class="text-[8px] font-black text-slate-400 uppercase">Capability Settings</span>
+                      <div class="grid grid-cols-2 gap-2">
+                         <dx-check-box [(value)]="f.isFilterable" text="Filterable" class="text-[10px]"></dx-check-box>
+                         <dx-check-box [(value)]="f.isSortable" text="Sortable" class="text-[10px]"></dx-check-box>
+                         <dx-check-box [(value)]="f.isGroupable" text="Groupable" class="text-[10px]"></dx-check-box>
+                         <dx-check-box [(value)]="f.isAggregatable" text="Aggregatable" class="text-[10px]"></dx-check-box>
+                      </div>
+                   </div>
+                 }
+              </div>
+              <div class="px-5 py-3 border-t border-slate-100 bg-slate-50 flex justify-end gap-2">
+                 <button class="rf-compact-btn-ghost" (click)="isFieldPopupVisible.set(false)">CANCEL</button>
+                 <button class="rf-compact-btn-primary px-6" (click)="applyFieldChanges()">SAVE CHANGES</button>
+              </div>
+           </dx-validation-group>
         </div>
-      </dx-popup>
+      </div>
 
-      <dx-popup [(visible)]="isRelPopupVisible" [width]="550" [height]="'auto'" [showTitle]="false" class="compact-popup">
-        <div *dxTemplate="let data of 'content'" class="p-6">
-           @if (editingRelationship(); as rel) {
-              <div class="flex flex-col gap-6">
-                 <div class="flex items-center gap-3">
-                    <span class="material-icons text-indigo-600">hub</span>
-                    <h3 class="text-base font-black text-slate-900 tracking-tight text-uppercase">Relationship Builder</h3>
-                 </div>
-                 <div class="grid grid-cols-2 gap-4">
-                    <dx-select-box [items]="entityLookup()" displayExpr="displayName" valueExpr="id" [(value)]="rel.sourceEntityId" [readOnly]="true" class="compact-select"></dx-select-box>
-                    <dx-select-box [items]="entityLookup()" displayExpr="displayName" valueExpr="id" [(value)]="rel.targetEntityId" placeholder="Target..." class="compact-select"></dx-select-box>
-                 </div>
-                 <div class="bg-slate-50 p-4 rounded-xl border border-slate-100">
-                    <div class="flex items-center justify-between mb-3 text-[10px] font-black text-slate-400">
-                       <span>JOIN KEYS</span>
-                       <button (click)="addCondition()" class="text-indigo-600">+ ADD</button>
+      <!-- Relationship Modal Overlay (Advanced Composite Keys) -->
+      <div *ngIf="isRelationshipPopupVisible()" class="rf-modal-overlay anim-fade" (click)="isRelationshipPopupVisible.set(false)">
+        <div class="rf-modal-content w-[600px]" (click)="$event.stopPropagation()">
+           <dx-validation-group #relValidationGroup>
+              <div class="px-5 py-3 border-b border-slate-200 bg-slate-50 flex items-center justify-between">
+                 <span class="text-[11px] font-black text-slate-800 uppercase tracking-widest">Enterprise Knowledge Link</span>
+                 <button (click)="isRelationshipPopupVisible.set(false)" class="text-slate-400 hover:text-slate-600"><span class="material-icons text-sm">close</span></button>
+              </div>
+              <div class="p-5 space-y-6">
+                 @if (editingRelationship(); as r) {
+                    <div class="grid grid-cols-2 gap-4">
+                       <div class="space-y-1.5">
+                          <label class="text-[9px] font-black text-slate-400 uppercase">Target Entity</label>
+                          <dx-select-box [items]="entityLookup()" displayExpr="displayName" valueExpr="id" [(value)]="r.targetEntityId" placeholder="Select Target..." class="compact-select">
+                             <dx-validator><dxi-validation-rule type="required"></dxi-validation-rule></dx-validator>
+                          </dx-select-box>
+                       </div>
+                       <div class="space-y-1.5">
+                          <label class="text-[9px] font-black text-slate-400 uppercase">Cardinality</label>
+                          <dx-select-box [items]="['OneToMany', 'ManyToOne', 'OneToOne']" [(value)]="r.relationType" class="compact-select"></dx-select-box>
+                       </div>
+                       <div class="space-y-1.5">
+                          <label class="text-[9px] font-black text-slate-400 uppercase">Join Strategy</label>
+                          <dx-select-box [items]="['INNER', 'LEFT', 'RIGHT']" [(value)]="r.joinType" class="compact-select"></dx-select-box>
+                       </div>
                     </div>
-                    <div class="flex flex-col gap-2 max-h-40 overflow-y-auto custom-scrollbar">
-                       @for (c of rel.conditions; track $index) {
-                          <div class="grid grid-cols-[1fr_20px_1fr_30px] items-center gap-2">
-                             <dx-select-box [items]="sourceFields()" displayExpr="displayName" valueExpr="name" [(value)]="c.leftField"></dx-select-box>
-                             <span class="text-center font-bold text-slate-300">=</span>
-                             <dx-select-box [items]="targetFields()" displayExpr="displayName" valueExpr="name" [(value)]="c.rightField"></dx-select-box>
-                             <button (click)="removeCondition($index)" class="text-slate-300 hover:text-red-500 material-icons text-sm">delete</button>
-                          </div>
-                       }
-                    </div>
-                 </div>
-                 <div class="grid grid-cols-2 gap-4">
-                    <dx-select-box [items]="['OneToMany', 'ManyToOne', 'OneToOne']" [(value)]="rel.relationType" class="compact-select"></dx-select-box>
-                    <dx-select-box [items]="['INNER', 'LEFT', 'RIGHT']" [(value)]="rel.joinType" class="compact-select"></dx-select-box>
-                 </div>
-                 <div class="flex justify-end gap-2 pt-4 border-t">
-                    <button (click)="isRelPopupVisible.set(false)" class="px-4 py-2 text-xs font-bold text-slate-500">Cancel</button>
-                    <button (click)="applyRelChanges()" class="bg-indigo-600 text-white font-bold px-6 py-2 rounded-xl text-xs">Establish Link</button>
-                 </div>
-              </div>
-           }
-        </div>
-      </dx-popup>
 
-      <dx-popup [(visible)]="isDiscoveryPopupVisible" [width]="900" [height]="650" [showTitle]="false" [showCloseButton]="true" class="compact-popup">
-        <div *dxTemplate="let data of 'content'" class="p-0 h-full flex flex-col bg-slate-50/50">
-           <div class="flex items-center justify-between p-4 border-b bg-white">
-              <div class="flex items-center gap-3">
-                 <div class="w-8 h-8 rounded-lg bg-indigo-600 flex items-center justify-center shadow-sm">
-                    <span class="material-icons text-white text-base">explore</span>
-                 </div>
-                 <div>
-                    <h3 class="text-sm font-black text-slate-900 tracking-tight leading-none uppercase">Schema Discovery</h3>
-                    <p class="text-[9px] text-slate-400 font-bold uppercase tracking-widest mt-0.5">Onboard new datasets remotely</p>
-                 </div>
-              </div>
-              <button (click)="isDiscoveryPopupVisible.set(false)" class="w-8 h-8 flex items-center justify-center hover:bg-slate-100 rounded-lg text-slate-400 hover:text-slate-600 transition-colors">
-                 <span class="material-icons text-lg">close</span>
-              </button>
-           </div>
-           <div class="flex-1 overflow-hidden">
-             <rf-schema-discovery></rf-schema-discovery>
-           </div>
-        </div>
-      </dx-popup>
+                     <div class="space-y-3">
+                        <div class="flex items-center justify-between p-2 bg-slate-50 rounded-lg border border-slate-200">
+                           <span class="text-[10px] font-black text-slate-400 uppercase tracking-widest">Conditions ({{r.conditions.length}})</span>
+                           <button (click)="addRelCondition()" class="text-[10px] font-black text-blue-500 uppercase hover:underline">
+                              + Add Key Pair
+                           </button>
+                        </div>
 
-      <dx-popup [(visible)]="isSqlPopupVisible" [width]="700" [height]="500" [showTitle]="false" [showCloseButton]="true" class="compact-popup">
-        <div *dxTemplate="let data of 'content'" class="p-0 h-full flex flex-col bg-slate-900">
-           <div class="flex items-center justify-between p-4 border-b border-slate-700 bg-slate-800">
-              <div class="flex items-center gap-3">
-                 <div class="w-8 h-8 rounded-lg bg-slate-900 border border-slate-700 flex items-center justify-center">
-                    <span class="material-icons text-emerald-400 text-base">code</span>
-                 </div>
-                 <div>
-                    <h3 class="text-sm font-black text-white tracking-tight leading-none uppercase">Final SQL Preview</h3>
-                    <p class="text-[9px] text-emerald-400 font-bold uppercase tracking-widest mt-0.5">Dynamically generated graph</p>
-                 </div>
+                        <div class="space-y-2 max-h-[200px] overflow-y-auto pr-1 custom-scrollbar">
+                           @for (cond of r.conditions; track $index) {
+                              <div class="flex items-center gap-2 bg-white p-2 rounded border border-slate-200 shadow-sm anim-fade">
+                                 <dx-select-box [items]="currentFields()" displayExpr="name" valueExpr="name" 
+                                              [(value)]="cond.leftField" placeholder="Source Field" 
+                                              [searchEnabled]="true" class="rf-compact-input flex-1" />
+                                 
+                                 <dx-select-box [items]="['=', '!=', '>', '<', '>=', '<=']" 
+                                              [(value)]="cond.operator" class="rf-compact-input w-16" />
+
+                                 <dx-select-box [items]="targetFields()" displayExpr="name" valueExpr="name" 
+                                              [(value)]="cond.rightField" placeholder="Target Field" 
+                                              [searchEnabled]="true" class="rf-compact-input flex-1" />
+
+                                 <button (click)="r.conditions.splice($index, 1)" 
+                                         class="w-8 h-8 flex items-center justify-center rounded hover:bg-red-50 text-slate-400 hover:text-red-500">
+                                    <i class="dx-icon-trash"></i>
+                                 </button>
+                              </div>
+                           }
+                           
+                           @if (r.conditions.length === 0) {
+                              <div class="text-center py-6 border-2 border-dashed border-slate-100 rounded-xl">
+                                 <p class="text-[10px] font-bold text-slate-300 uppercase italic">No conditions defined</p>
+                              </div>
+                           }
+                        </div>
+                     </div>
+                 }
               </div>
-              <button (click)="isSqlPopupVisible.set(false)" class="w-8 h-8 flex items-center justify-center hover:bg-slate-700 rounded-lg text-slate-400 hover:text-white transition-colors">
-                 <span class="material-icons text-lg">close</span>
-              </button>
-           </div>
-           <div class="flex-1 p-4 overflow-auto custom-scrollbar">
-              <pre class="text-[11px] font-mono text-indigo-200 leading-relaxed">{{ sqlPreviewContent() }}</pre>
-           </div>
+              <div class="px-5 py-3 border-t border-slate-100 bg-slate-50 flex justify-end gap-2">
+                 <button class="rf-compact-btn-ghost" (click)="isRelationshipPopupVisible.set(false)">CANCEL</button>
+                 <button class="rf-compact-btn-primary px-6" (click)="applyRelationshipChanges()">ESTABLISH LINK</button>
+              </div>
+           </dx-validation-group>
         </div>
+      </div>
+
+      <!-- Bulk Import Modal -->
+      <dx-popup
+         [visible]="isBulkImportVisible()"
+         [width]="600" [height]="'auto'" [maxHeight]="'80vh'"
+         [showTitle]="false" [dragEnabled]="false" [showCloseButton]="false"
+         (onHiding)="isBulkImportVisible.set(false)">
+         <div *dxTemplate="let data of 'content'" class="flex flex-col">
+            <div class="p-4 border-b border-slate-200 flex items-center justify-between bg-slate-50">
+               <span class="text-[11px] font-black text-slate-800 uppercase tracking-widest">Entity Discovery Hub</span>
+               <button (click)="isBulkImportVisible.set(false)" class="text-slate-400"><span class="material-icons text-sm">close</span></button>
+            </div>
+            <div class="p-6 space-y-6">
+               <div class="grid grid-cols-2 gap-4">
+                  <div class="space-y-1.5">
+                     <label class="text-[9px] font-black text-slate-400 uppercase">Provider / Cluster</label>
+                     <dx-select-box [items]="['SqlServer', 'Postgres', 'MySql']" [value]="'SqlServer'" class="compact-select" />
+                  </div>
+                  <div class="space-y-1.5">
+                     <label class="text-[9px] font-black text-slate-400 uppercase">Database Instance</label>
+                     <dx-select-box [items]="availableDatabases()" [(value)]="selectedImportDatabase" placeholder="Choose database..." class="compact-select" (onValueChanged)="onImportDbChange($event.value)" />
+                  </div>
+               </div>
+               
+               <div class="space-y-2">
+                  <label class="text-[9px] font-black text-slate-400 uppercase">Physical Tables Found</label>
+                  <div class="h-64 border border-slate-200 rounded-lg overflow-hidden bg-white">
+                     <dx-list
+                        [items]="availableTables()"
+                        [showSelectionControls]="true"
+                        selectionMode="multiple"
+                        [(selectedItems)]="selectedImportTables"
+                        class="custom-scrollbar"
+                     ></dx-list>
+                     @if (availableTables().length === 0 && selectedImportDatabase()) {
+                        <div class="absolute inset-x-0 top-1/2 -translate-y-1/2 text-center">
+                           <span class="material-icons text-slate-100 text-5xl">manage_search</span>
+                           <p class="text-[10px] font-black text-slate-300 uppercase mt-2">Scanning...</p>
+                        </div>
+                     }
+                  </div>
+               </div>
+            </div>
+            <div class="p-4 border-t border-slate-100 bg-white flex justify-end gap-2">
+               <button class="rf-compact-btn-ghost" (click)="isBulkImportVisible.set(false)">DISCARD</button>
+               <button class="rf-compact-btn-primary px-8" [disabled]="selectedImportTables().length === 0" (click)="applyBulkImport()">IMPORT {{ selectedImportTables().length }} ENTITIES</button>
+            </div>
+         </div>
       </dx-popup>
+      
+      <dx-load-panel [visible]="isSaving()" message="Syncing Schema..."></dx-load-panel>
     </div>
   `,
   styles: [`
-    :host { display: block; height: 100vh; overflow: hidden; font-family: 'Inter', sans-serif; font-size: 13px; }
-    
-    .compact-tabs { height: 40px; }
-    .compact-tabs ::ng-deep .dx-tab { 
-      background: transparent !important; 
-      color: #94a3b8 !important; 
-      border: none !important; 
-      font-size: 11px !important; 
-      font-weight: 800 !important; 
-      text-transform: uppercase !important;
-      letter-spacing: 0.05em !important;
-      padding: 0 16px !important;
-    }
-    .compact-tabs ::ng-deep .dx-tab-selected { 
-       color: #4f46e5 !important; 
-       box-shadow: inset 0 -2px 0 #4f46e5 !important;
-    }
-    
-    .custom-scrollbar::-webkit-scrollbar,
-    .modern-scroll-view ::ng-deep .dx-scrollable-content::-webkit-scrollbar { width: 6px; height: 6px; }
-    .custom-scrollbar::-webkit-scrollbar-track,
-    .modern-scroll-view ::ng-deep .dx-scrollable-content::-webkit-scrollbar-track { background: transparent; }
-    .custom-scrollbar::-webkit-scrollbar-thumb,
-    .modern-scroll-view ::ng-deep .dx-scrollable-content::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 10px; }
-
-    ::ng-deep .compact-grid .dx-datagrid-headers { 
-       color: #94a3b8 !important;
-       font-weight: 800 !important;
-       font-size: 9px !important;
-       text-transform: uppercase !important;
-       border-bottom: 1px solid #f1f5f9 !important;
-    }
-    ::ng-deep .compact-grid .dx-datagrid-rowsview .dx-row { 
-       background-color: white !important;
-       border-bottom: 1px solid #f1f5f9 !important; 
-    }
-    ::ng-deep .compact-grid .dx-datagrid-rowsview .dx-data-row td { 
-       padding: 8px 12px !important; 
-       font-size: 12px !important;
-    }
-
-    .modern-checkbox-sm ::ng-deep .dx-checkbox-icon {
-       width: 18px;
-       height: 18px;
-       border-radius: 6px;
-    }
-
-    ::ng-deep .dx-popup-content { border-radius: 24px; }
-    ::ng-deep .dx-overlay-content { border-radius: 24px !important; box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25) !important; }
-
-    .schema-entity-list {
-       background: transparent !important;
-       padding: 8px !important;
-    }
-    ::ng-deep .schema-entity-list .dx-list-item {
-       background: transparent !important;
-       border: none !important;
-       padding: 0 !important;
-       margin-bottom: 4px !important;
-    }
-    ::ng-deep .schema-entity-list .dx-list-item-content {
-       padding: 0 !important;
-    }
-    ::ng-deep .schema-entity-list .dx-list-item.dx-state-hover {
-       background: transparent !important;
-    }
-    ::ng-deep .schema-entity-list .dx-list-item.dx-state-focused {
-       background: transparent !important;
-    }
+    :host { display: block; height: 100vh; font-family: 'Inter', sans-serif; }
+    ::ng-deep .dx-datagrid-content .dx-datagrid-table .dx-row > td { vertical-align: middle !important; }
+    ::ng-deep .compact-select-white .dx-texteditor-container { background: #fff !important; }
+    .skeleton { background: linear-gradient(90deg, #f1f5f9 25%, #f8fafc 50%, #f1f5f9 75%); background-size: 200% 100%; animation: skeleton 1.5s infinite; border-radius: 8px; }
+    @keyframes skeleton { from { background-position: 200% 0; } to { background-position: -200% 0; } }
   `]
 })
 export class SchemaManagerComponent {
-  pageLoadMode = 'scroll' as any;
   reportService = inject(ReportService);
+  notify = inject(NotificationService);
   
   searchQuery = signal('');
   isDetailLoading = signal(false);
@@ -545,6 +574,27 @@ export class SchemaManagerComponent {
   tabIndex = signal(0);
   isSaving = signal(false);
   dirtyEntities = signal<Set<string>>(new Set());
+
+  isFieldPopupVisible = signal(false);
+  editingField = signal<FieldMetadata | null>(null);
+
+  isRelationshipPopupVisible = signal(false);
+  editingRelationship = signal<EntityRelationship | null>(null);
+
+  // Bulk Import Signals
+  isBulkImportVisible = signal(false);
+  availableDatabases = signal<string[]>([]);
+  availableTables = signal<string[]>([]);
+  selectedImportDatabase = signal<string>('');
+  selectedImportTables = signal<string[]>([]);
+
+  // Preview Signals
+  previewData = signal<any[]>([]);
+  isPreviewLoading = signal(false);
+
+  @ViewChild('validationGroup', { static: false }) validationGroup?: DxValidationGroupComponent;
+  @ViewChild('fieldValidationGroup', { static: false }) fieldValidationGroup?: DxValidationGroupComponent;
+  @ViewChild('relValidationGroup', { static: false }) relValidationGroup?: DxValidationGroupComponent;
 
   private searchSubject = new Subject<string>();
   private destroyRef = inject(DestroyRef);
@@ -561,50 +611,36 @@ export class SchemaManagerComponent {
       if (id) {
         this.isDetailLoading.set(true);
         this.reportService.loadEntityDetail(id).subscribe({
-          next: () => this.isDetailLoading.set(false),
+          next: () => {
+             this.isDetailLoading.set(false);
+             if (this.tabIndex() === 2) this.refreshPreview();
+          },
           error: () => this.isDetailLoading.set(false)
         });
       }
     });
+
+    effect(() => {
+       if (this.tabIndex() === 2 && this.selectedEntityId()) {
+          this.refreshPreview();
+       }
+    });
   }
 
-  onSearchChange(val: string) {
-    this.searchSubject.next(val);
-  }
+  onSearchChange(val: string) { this.searchSubject.next(val); }
 
   bulkToggleFields(entity: EntityMetadata, visible: boolean) {
      entity.fields.forEach(f => f.isVisible = visible);
      this.markDirty(entity.id);
-     // Trigger refresh by updating the entities signal
-     this.reportService.entities.update(list => {
-        const index = list.findIndex(e => e.id === entity.id);
-        if (index !== -1) list[index] = { ...entity };
-        return [...list];
-     });
   }
   
-  isFieldPopupVisible = signal(false);
-  isRelPopupVisible = signal(false);
-  isDiscoveryPopupVisible = signal(false);
-  isSqlPopupVisible = signal(false);
-  
-  editingField = signal<FieldMetadata | null>(null);
-  editingRelationship = signal<any | null>(null);
-  sqlPreviewContent = signal<string>('');
-
-  tabs = [
-    { text: 'Fields', icon: 'list' },
-    { text: 'Mappings', icon: 'link' }
-  ];
-
+  tabs = [{ text: 'Schema Definition' }, { text: 'Relationships' }, { text: 'Data Preview' }];
   dataTypes = ['string', 'number', 'decimal', 'datetime', 'boolean'];
   entities = this.reportService.entities;
   
   filteredEntities = computed(() => {
     const q = this.searchQuery().toLowerCase();
-    return this.entities().filter(e => 
-      e.name.toLowerCase().includes(q) || e.displayName.toLowerCase().includes(q)
-    );
+    return this.entities().filter(e => e.name.toLowerCase().includes(q) || e.displayName.toLowerCase().includes(q));
   });
 
   selectedEntity = computed(() => {
@@ -621,157 +657,237 @@ export class SchemaManagerComponent {
      const id = this.selectedEntityId();
      if (!id) return [];
      return this.entities()
-       .flatMap(e => e.relationships)
-       .filter(r => r.sourceEntityId === id || r.targetEntityId === id);
+       .flatMap(e => e.relationships || [])
+       .filter(r => !!r && (r.sourceEntityId === id || r.targetEntityId === id));
   });
 
-  isDirty(entityId: string) {
-    return this.dirtyEntities().has(entityId);
-  }
+   currentFields = computed(() => {
+      const id = this.selectedEntityId();
+      return this.entities().find(e => e.id === id)?.fields || [];
+   });
 
+   targetFields = computed(() => {
+      const rel = this.editingRelationship();
+      if (!rel?.targetEntityId) return [];
+      return this.entities().find(e => e.id === rel.targetEntityId)?.fields || [];
+   });
+
+   getEntityName(id: string) {
+      return this.entities().find(e => e.id === id)?.displayName || 'Unknown';
+   }
+
+   consistencyErrors = signal<string[]>([]);
+   checkConsistency() {
+      const errors: string[] = [];
+      const allEntities = this.entities();
+      
+      allEntities.forEach(entity => {
+         (entity.relationships || []).forEach(rel => {
+            const target = allEntities.find(e => e.id === rel.targetEntityId);
+            if (!target) {
+               errors.push(`Entity '${entity.displayName}' has a link to a missing target entity.`);
+               return;
+            }
+            
+            if (rel.conditions?.length) {
+               rel.conditions.forEach(c => {
+                  const leftExists = entity.fields.some(f => f.name === c.leftField);
+                  const rightExists = target.fields.some(f => f.name === c.rightField);
+                  if (!leftExists) errors.push(`Invalid source field '${c.leftField}' in relationship between ${entity.name} and ${target.name}.`);
+                  if (!rightExists) errors.push(`Invalid target field '${c.rightField}' in relationship between ${entity.name} and ${target.name}.`);
+               });
+            } else {
+               const leftExists = entity.fields.some(f => f.name === rel.sourceField);
+               const rightExists = target.fields.some(f => f.name === rel.targetField);
+               if (!leftExists) errors.push(`Invalid source field '${rel.sourceField}' in relationship between ${entity.name} and ${target.name}.`);
+               if (!rightExists) errors.push(`Invalid target field '${rel.targetField}' in relationship between ${entity.name} and ${target.name}.`);
+            }
+         });
+      });
+      
+      this.consistencyErrors.set(errors);
+      if (errors.length === 0) this.notify.success('Schema is consistent. All links verified.');
+      else this.notify.warning(`Found ${errors.length} consistency issues.`);
+   }
+
+   previewFilters = signal<FilterGroup>({ id: 'preview', logic: 'AND', conditions: [], groups: [] });
+
+   addRelCondition() {
+      const rel = this.editingRelationship();
+      if (!rel) return;
+      if (!rel.conditions) rel.conditions = [];
+      rel.conditions.push({ leftField: '', rightField: '', operator: '=' });
+   }
+
+  isDirty(entityId: string) { return this.dirtyEntities().has(entityId); }
   saveEnabled = computed(() => this.dirtyEntities().size > 0);
 
-  sourceFields = computed(() => {
-    const rel = this.editingRelationship();
-    if (!rel || !rel.sourceEntityId) return [];
-    const ent = this.entities().find(e => e.id === rel.sourceEntityId);
-    return ent?.fields || [];
-  });
+  loadInitialData() { this.reportService.loadEntities(); }
 
-  targetFields = computed(() => {
-    const rel = this.editingRelationship();
-    if (!rel || !rel.targetEntityId) return [];
-    const ent = this.entities().find(e => e.id === rel.targetEntityId);
-    return ent?.fields || [];
-  });
-
-  loadInitialData() {
-    this.reportService.loadEntities();
+  onProvisionClick() {
+    const result = this.validationGroup?.instance.validate();
+    if (result?.isValid) {
+      this.saveChanges();
+    } else {
+      this.notify.validationWarning('Please resolve entity metadata errors before provisioning.');
+    }
   }
 
-  saveChanges() {
+  onDeleteEntity(e: EntityMetadata, event: Event) {
+      event.stopPropagation();
+      this.confirm(`Are you sure you want to remove '${e.name}'?`, () => {
+         this.reportService.deleteEntity(e.id).subscribe(() => {
+            if (this.selectedEntityId() === e.id) this.selectedEntityId.set(null);
+         });
+      });
+   }
+
+   onDeleteRelationship(id: string) {
+      this.confirm('Remove this relationship?', () => {
+         this.reportService.deleteRelationship(id).subscribe();
+      });
+   }
+
+   private confirm(msg: string, cb: () => void) {
+      if (confirm(msg)) cb();
+   }
+
+   saveChanges() {
     const entity = this.selectedEntity();
     if (!entity) return;
     this.isSaving.set(true);
     this.reportService.saveEntityMetadata(entity).subscribe({
       next: () => {
         this.isSaving.set(false);
-        this.dirtyEntities.update(set => {
-          set.delete(entity.id);
-          return new Set(set);
-        });
+        this.dirtyEntities.update(set => { set.delete(entity.id); return new Set(set); });
+        this.notify.success('Schema provisioned successfully.');
       },
-      error: () => {
-         this.isSaving.set(false);
-         // In a real app we'd show a notification here
-      }
+      error: () => this.isSaving.set(false)
     });
   }
 
-  saveAllChanges() {
-     const dirtyIds = Array.from(this.dirtyEntities());
-     if (dirtyIds.length === 0) return;
-     
-     this.isSaving.set(true);
-     const entitiesToSave = this.entities().filter(e => dirtyIds.includes(e.id));
-     
-     // Sequential save for reliability, or we could use forkJoin
-     let completed = 0;
-     const saveNext = () => {
-        if (completed >= entitiesToSave.length) {
-           this.isSaving.set(false);
-           return;
+  markDirty(entityId: string) { this.dirtyEntities.update(set => { set.add(entityId); return new Set(set); }); }
+
+  // ── Preview Logic ───────────────────────────────────────────────────
+  refreshPreview() {
+     const entity = this.selectedEntity();
+     if (!entity) return;
+     this.isPreviewLoading.set(true);
+     this.reportService.runReport({
+        entity: entity.name,
+        columns: entity.fields.filter(f => f.isVisible).map(f => f.name).slice(0, 15),
+        filters: this.previewFilters(),
+        page: 1,
+        pageSize: 50
+     }).subscribe({
+        next: (res) => {
+           this.previewData.set(res?.data || []);
+           this.isPreviewLoading.set(false);
+        },
+        error: () => {
+           this.previewData.set([]);
+           this.isPreviewLoading.set(false);
         }
-        const entity = entitiesToSave[completed];
-        this.reportService.saveEntityMetadata(entity).subscribe({
-           next: () => {
-              this.dirtyEntities.update(set => { set.delete(entity.id); return new Set(set); });
-              completed++;
-              saveNext();
-           },
-           error: () => {
-              completed++;
-              saveNext();
-           }
-        });
-     };
-     saveNext();
+     });
   }
 
-  generateSqlPreview() {
-    const ents = this.entities().filter(e => e.isActive);
-    if (!ents.length) {
-       this.sqlPreviewContent.set('-- No active entities found in the semantic layer.');
-       this.isSqlPopupVisible.set(true);
-       return;
+  // ── Bulk Import Logic ───────────────────────────────────────────────
+  openBulkImport() {
+     this.isBulkImportVisible.set(true);
+     this.reportService.getAvailableDatabases('SqlServer').subscribe(dbs => this.availableDatabases.set(dbs));
+  }
+
+  onImportDbChange(db: string) {
+     this.availableTables.set([]);
+     this.reportService.discoverTables('SqlServer', db).subscribe(tables => this.availableTables.set(tables));
+  }
+
+  applyBulkImport() {
+     const tables = this.selectedImportTables();
+     const db = this.selectedImportDatabase();
+     this.reportService.importTables('SqlServer', tables, db).subscribe(() => {
+        this.isBulkImportVisible.set(false);
+        this.selectedImportTables.set([]);
+     });
+  }
+
+  // ── Relationship Logic ──────────────────────────────────────────────
+  addRelationship() {
+    const id = this.selectedEntityId();
+    if (!id) return;
+    this.editingRelationship.set({
+      id: crypto.randomUUID(),
+      sourceEntityId: id,
+      targetEntityId: '',
+      sourceField: '',
+      targetField: '',
+      joinType: 'INNER',
+      relationType: 'OneToMany',
+      conditions: []
+    });
+    this.isRelationshipPopupVisible.set(true);
+  }
+
+  addCondition(r: EntityRelationship) {
+     if (!r.conditions) r.conditions = [];
+     r.conditions.push({ leftField: '', rightField: '', operator: '=' });
+  }
+
+  removeCondition(r: EntityRelationship, idx: number) {
+     r.conditions.splice(idx, 1);
+  }
+
+  openRelationshipEditor(rel: EntityRelationship) {
+    this.editingRelationship.set(JSON.parse(JSON.stringify(rel)));
+    this.isRelationshipPopupVisible.set(true);
+  }
+
+  applyRelationshipChanges() {
+    const res = this.relValidationGroup?.instance.validate();
+    if (!res?.isValid) {
+      this.notify.validationWarning('Incomplete link definition. Please check keys.');
+      return;
     }
 
-    let sql = 'SELECT\n';
-    const columns: string[] = [];
-    ents.forEach(e => {
-       const activeFields = e.fields.filter(f => f.isVisible && !f.isSensitive);
-       activeFields.forEach(f => {
-          columns.push(`  [${e.tableName}].[${f.name}] AS [${(f.displayName || f.name).replace(/ /g, '_')}]`);
-       });
-    });
-    sql += columns.length > 0 ? columns.join(',\n') : '  *';
-    
-    const baseEntity = ents[0];
-    sql += `\nFROM [${baseEntity.schema || 'dbo'}].[${baseEntity.tableName}] AS [${baseEntity.tableName}]`;
+    const rel = this.editingRelationship();
+    const entity = this.selectedEntity();
+    if (!rel || !entity) return;
 
-    const processed = new Set([baseEntity.id]);
-    const allRels = this.entities().flatMap(e => e.relationships);
-    
-    let added = true;
-    while(added) {
-       added = false;
-       for (const rel of allRels) {
-          const isSourceProcessed = processed.has(rel.sourceEntityId);
-          const isTargetProcessed = processed.has(rel.targetEntityId);
-          
-          if (isSourceProcessed && !isTargetProcessed) {
-             const targetEnt = ents.find(e => e.id === rel.targetEntityId);
-             const sourceEnt = ents.find(e => e.id === rel.sourceEntityId);
-             if (targetEnt && sourceEnt) {
-                const joinConditions = rel.conditions?.map((c: any) => `[${sourceEnt.tableName}].[${c.leftField}] ${c.operator || '='} [${targetEnt.tableName}].[${c.rightField}]`).join(' AND ') || '1=1';
-                sql += `\n${rel.joinType || 'LEFT'} JOIN [${targetEnt.schema || 'dbo'}].[${targetEnt.tableName}] AS [${targetEnt.tableName}] ON ${joinConditions}`;
-                processed.add(rel.targetEntityId);
-                added = true;
-             }
-          } else if (!isSourceProcessed && isTargetProcessed) {
-             const sourceEnt = ents.find(e => e.id === rel.sourceEntityId);
-             const targetEnt = ents.find(e => e.id === rel.targetEntityId);
-             if (sourceEnt && targetEnt) {
-                 const joinConditions = rel.conditions?.map((c: any) => `[${sourceEnt.tableName}].[${c.leftField}] ${c.operator || '='} [${targetEnt.tableName}].[${c.rightField}]`).join(' AND ') || '1=1';
-                 sql += `\n${rel.joinType || 'LEFT'} JOIN [${sourceEnt.schema || 'dbo'}].[${sourceEnt.tableName}] AS [${sourceEnt.tableName}] ON ${joinConditions}`;
-                 processed.add(rel.sourceEntityId);
-                 added = true;
-             }
-          }
-       }
-    }
+    if (!entity.relationships) entity.relationships = [];
+    const existingIdx = entity.relationships.findIndex(r => r.id === rel.id);
+    if (existingIdx !== -1) entity.relationships[existingIdx] = rel;
+    else entity.relationships.push(rel);
 
-    ents.filter(e => !processed.has(e.id)).forEach(e => {
-        sql += `\n-- UNJOINED ENTITY: [${e.schema || 'dbo'}].[${e.tableName}]`;
-    });
-
-    this.sqlPreviewContent.set(sql);
-    this.isSqlPopupVisible.set(true);
-  }
-
-  markDirty(entityId: string) {
-    this.dirtyEntities.update(set => {
-      set.add(entityId);
-      return new Set(set);
+    this.reportService.saveEntityMetadata(entity).subscribe(() => {
+      this.isRelationshipPopupVisible.set(false);
+      this.loadInitialData();
+      this.notify.success('Knowledge link established.');
     });
   }
 
+  deleteRelationship(id: string) {
+    const entity = this.selectedEntity();
+    if (!entity) return;
+    entity.relationships = (entity.relationships || []).filter(r => r.id !== id);
+    this.reportService.saveEntityMetadata(entity).subscribe(() => {
+      this.loadInitialData();
+      this.notify.success('Link severed.');
+    });
+  }
+
+  // ── Field Logic ───────────────────────────────────────────────────
   editField(field: FieldMetadata) {
     this.editingField.set(JSON.parse(JSON.stringify(field)));
     this.isFieldPopupVisible.set(true);
   }
 
   applyFieldChanges() {
+    const res = this.fieldValidationGroup?.instance.validate();
+    if (!res?.isValid) {
+      this.notify.validationWarning('Please provide a valid display label.');
+      return;
+    }
+
     const edited = this.editingField();
     const entity = this.selectedEntity();
     if (!edited || !entity) return;
@@ -781,66 +897,8 @@ export class SchemaManagerComponent {
       this.reportService.saveEntityMetadata(entity).subscribe(() => {
         this.isFieldPopupVisible.set(false);
         this.loadInitialData();
+        this.notify.success('Field configuration updated.');
       });
     }
-  }
-
-  addRelationship() {
-    this.openRelationshipEditor();
-  }
-
-  openRelationshipEditor(rel?: any) {
-    if (rel) {
-      const clone = JSON.parse(JSON.stringify(rel));
-      if (!clone.conditions) clone.conditions = [];
-      this.editingRelationship.set(clone);
-    } else {
-      this.editingRelationship.set({
-        id: '',
-        sourceEntityId: this.selectedEntityId(),
-        targetEntityId: '',
-        relationType: 'OneToMany',
-        joinType: 'LEFT',
-        conditions: [{ leftField: '', rightField: '', operator: '=' }]
-      });
-    }
-    this.isRelPopupVisible.set(true);
-  }
-
-  addCondition() {
-    this.editingRelationship.update(rel => ({
-      ...rel,
-      conditions: [...(rel.conditions || []), { leftField: '', rightField: '', operator: '=' }]
-    }));
-  }
-
-  removeCondition(index: number) {
-    this.editingRelationship.update(rel => ({
-      ...rel,
-      conditions: rel.conditions.filter((_: any, i: number) => i !== index)
-    }));
-  }
-
-  deleteRelationship(id: string) {
-    this.reportService.deleteRelationship(id).subscribe(() => {
-       this.loadInitialData();
-    });
-  }
-
-  applyRelChanges() {
-     const rel = this.editingRelationship();
-     if (!rel) return;
-     if (rel.conditions && rel.conditions.length > 0) {
-        rel.sourceField = rel.conditions[0].leftField;
-        rel.targetField = rel.conditions[0].rightField;
-     }
-     this.reportService.saveRelationship(rel).subscribe(() => {
-        this.isRelPopupVisible.set(false);
-        this.loadInitialData();
-     });
-  }
-
-  refreshRelSignal() {
-    this.editingRelationship.update(v => ({ ...v }));
   }
 }

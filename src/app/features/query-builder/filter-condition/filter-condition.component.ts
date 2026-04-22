@@ -1,13 +1,13 @@
 import { Component, Input, Output, EventEmitter, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
-import { DxSelectBoxModule, DxTextBoxModule, DxNumberBoxModule, DxTagBoxModule, DxDateBoxModule } from 'devextreme-angular';
+import { DxSelectBoxModule, DxTextBoxModule, DxNumberBoxModule, DxTagBoxModule, DxDateBoxModule, DxValidatorModule } from 'devextreme-angular';
 import type { FilterCondition, FieldMetadata, DataType, Operator } from '../../../core/models/report.models';
 import { OPERATORS } from '../../../core/models/report.models';
 
 @Component({
   selector: 'rf-filter-condition',
   standalone: true,
-  imports: [CommonModule, DxSelectBoxModule, DxTextBoxModule, DxNumberBoxModule, DxTagBoxModule, DxDateBoxModule],
+  imports: [CommonModule, DxSelectBoxModule, DxTextBoxModule, DxNumberBoxModule, DxTagBoxModule, DxDateBoxModule, DxValidatorModule],
   template: `
     <div class="flex items-center gap-2 group w-full">
       <!-- Field selector -->
@@ -19,8 +19,11 @@ import { OPERATORS } from '../../../core/models/report.models';
         [value]="condition.field"
         placeholder="Select field..."
         [searchEnabled]="true"
-        (onValueChanged)="onFieldChange($event)"
-      />
+        (onValueChanged)="onFieldChange($event)">
+        <dx-validator>
+           <dxi-validation-rule type="required" message="Required"></dxi-validation-rule>
+        </dx-validator>
+      </dx-select-box>
 
       <!-- Operator selector -->
       <dx-select-box
@@ -44,32 +47,44 @@ import { OPERATORS } from '../../../core/models/report.models';
               [value]="condition.value"
               [searchEnabled]="true"
               placeholder="Select..."
-              (onValueChanged)="onValueChange($event.value)"
-            />
+              (onValueChanged)="onValueChange($event.value)">
+              <dx-validator *ngIf="isValueRequired">
+                 <dxi-validation-rule type="required" message="Required"></dxi-validation-rule>
+              </dx-validator>
+            </dx-select-box>
           }
           @case ('text') {
             <dx-text-box
               class="w-full"
               [value]="stringValue"
               placeholder="Value..."
-              (onValueChanged)="onValueChange($event.value)"
-            />
+              (onValueChanged)="onValueChange($event.value)">
+              <dx-validator *ngIf="isValueRequired">
+                 <dxi-validation-rule type="required" message="Required"></dxi-validation-rule>
+              </dx-validator>
+            </dx-text-box>
           }
           @case ('number') {
             <dx-number-box
               class="w-full"
               [value]="numberValue"
               placeholder="0"
-              (onValueChanged)="onValueChange($event.value)"
-            />
+              (onValueChanged)="onValueChange($event.value)">
+              <dx-validator *ngIf="isValueRequired">
+                 <dxi-validation-rule type="required" message="Required"></dxi-validation-rule>
+              </dx-validator>
+            </dx-number-box>
           }
           @case ('date') {
             <dx-date-box
               class="w-full"
               [value]="dateValue"
               displayFormat="yyyy-MM-dd"
-              (onValueChanged)="onValueChange($event.value)"
-            />
+              (onValueChanged)="onValueChange($event.value)">
+              <dx-validator *ngIf="isValueRequired">
+                 <dxi-validation-rule type="required" message="Required"></dxi-validation-rule>
+              </dx-validator>
+            </dx-date-box>
           }
           @case ('multi') {
             <dx-tag-box
@@ -80,11 +95,14 @@ import { OPERATORS } from '../../../core/models/report.models';
               [value]="condition.values ?? []"
               [acceptCustomValue]="lookupItems.length === 0"
               placeholder="Add values..."
-              (onValueChanged)="onMultiValueChange($event.value)"
-            />
+              (onValueChanged)="onMultiValueChange($event.value)">
+              <dx-validator *ngIf="isValueRequired">
+                 <dxi-validation-rule type="required" message="At least one required"></dxi-validation-rule>
+              </dx-validator>
+            </dx-tag-box>
           }
           @case ('none') {
-            <span class="text-[11px] font-medium text-muted-foreground italic px-2">No value needed</span>
+            <span class="text-[10px] font-black text-slate-400 uppercase italic px-2 tracking-tighter">Automatic Context</span>
           }
           @default {
             <dx-text-box class="w-full" placeholder="Value..." (onValueChanged)="onValueChange($event.value)" />
@@ -92,12 +110,12 @@ import { OPERATORS } from '../../../core/models/report.models';
         }
       </div>
 
-      <!-- Actions (Visible on group hover) -->
+      <!-- Actions -->
       <div class="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
-        <button class="shadcn-btn-ghost w-7 h-7 p-0 text-slate-400 hover:text-brand-blue" title="Duplicate" (click)="onDuplicate.emit(condition)">
+        <button class="rf-compact-btn-ghost w-7 h-7 p-0 text-slate-400 hover:text-brand-primary" title="Duplicate" (click)="onDuplicate.emit(condition)">
            <span class="material-icons text-sm">content_copy</span>
         </button>
-        <button class="shadcn-btn-ghost w-7 h-7 p-0 text-slate-400 hover:text-destructive hover:bg-destructive/5" title="Remove" (click)="onRemove.emit(condition.id)">
+        <button class="rf-compact-btn-ghost w-7 h-7 p-0 text-slate-400 hover:text-rose-500" title="Remove" (click)="onRemove.emit(condition.id)">
            <span class="material-icons text-sm">close</span>
         </button>
       </div>
@@ -107,6 +125,8 @@ import { OPERATORS } from '../../../core/models/report.models';
     :host { display: block; width: 100%; }
     .cond-field { width: 160px; }
     .cond-op { width: 140px; }
+    ::ng-deep .cond-field .dx-texteditor-input, 
+    ::ng-deep .cond-op .dx-texteditor-input { font-size: 11px !important; font-weight: 600 !important; }
   `]
 })
 export class FilterConditionComponent {
@@ -138,6 +158,11 @@ export class FilterConditionComponent {
     if (dt === 'datetime') return 'date';
     if (dt === 'int' || dt === 'decimal') return 'number';
     return 'text';
+  }
+
+  get isValueRequired(): boolean {
+    const op = OPERATORS.find(o => o.value === this.condition.operator);
+    return !op?.noValue;
   }
 
   get lookupItems(): { label: string, value: any }[] {

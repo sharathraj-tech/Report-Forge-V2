@@ -8,7 +8,6 @@ import { QueryBuilderComponent } from '../query-builder/query-builder.component'
 import { DxTreeViewModule, DxButtonModule, DxTagBoxModule, DxTabsModule, DxPopupModule, DxSelectBoxModule, DxTextBoxModule, DxListModule, DxLoadPanelModule } from 'devextreme-angular';
 import type { ReportDefinition, GridDefinition, ChartDefinition } from '../../core/models/report.models';
 import type { DashboardWidget } from '../../core/models/dashboard.models';
-import { SchemaDiscoveryComponent } from '../developer/schema-discovery.component';
 
 @Component({
   selector: 'rf-query-module',
@@ -25,166 +24,146 @@ import { SchemaDiscoveryComponent } from '../developer/schema-discovery.componen
     DxListModule,
     DxLoadPanelModule,
     ReportGridComponent,
-    QueryBuilderComponent,
-    SchemaDiscoveryComponent
+    QueryBuilderComponent
   ],
   template: `
-    <div class="cockpit full-height flex flex-col anim-fade-in bg-background text-foreground">
-      <!-- Shadcn-style Header -->
-      <header class="h-14 border-b flex items-center justify-between px-6 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 sticky top-0 z-50">
+    <div class="flex flex-col h-full bg-white anim-fade">
+      <!-- Standardized Compact Header -->
+      <header class="h-12 border-b border-slate-200 flex items-center justify-between px-4 bg-white shrink-0">
         <div class="flex items-center gap-6">
            <div class="flex items-center gap-2">
-             <span class="material-icons text-foreground">analytics</span>
-             <span class="font-bold tracking-tight text-lg">REPORT<span class="text-muted-foreground font-medium">FORGE</span></span>
+             <span class="material-icons text-slate-900 text-lg">insights</span>
+             <h1 class="text-sm font-black text-slate-900 tracking-tight uppercase">Analytic Cockpit</h1>
            </div>
            
-           <nav class="flex items-center gap-1 bg-muted/50 p-1 rounded-md">
+           <nav class="flex items-center bg-slate-100 p-1 rounded-lg border border-slate-200">
              <button 
-                class="px-3 py-1.5 text-sm font-medium rounded-sm transition-all"
-                [class.bg-background]="activeTab() === 0"
+                class="px-4 py-1.5 text-[10px] font-black uppercase tracking-widest rounded-md transition-all"
+                [class.bg-white]="activeTab() === 0"
                 [class.shadow-sm]="activeTab() === 0"
+                [class.text-brand-primary]="activeTab() === 0"
+                [class.text-slate-400]="activeTab() !== 0"
                 (click)="activeTab.set(0)">
-                Build
+                Designer
              </button>
              <button 
-                class="px-3 py-1.5 text-sm font-medium rounded-sm transition-all"
-                [class.bg-background]="activeTab() === 1"
+                class="px-4 py-1.5 text-[10px] font-black uppercase tracking-widest rounded-md transition-all"
+                [class.bg-white]="activeTab() === 1"
                 [class.shadow-sm]="activeTab() === 1"
+                [class.text-brand-primary]="activeTab() === 1"
+                [class.text-slate-400]="activeTab() !== 1"
                 (click)="activeTab.set(1)">
-                Analyze
+                Explorer
              </button>
            </nav>
         </div>
 
         <div class="flex items-center gap-3">
-           <div class="flex items-center gap-2 px-3 py-1.5 rounded-full border bg-muted/30">
-             <span class="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">Dev Mode</span>
-             <button class="switch" [class.active]="developerMode()" (click)="toggleDevMode()">
-                <div class="switch-handle"></div>
-             </button>
-           </div>
-           
-           <div class="h-8 w-[1px] bg-border mx-1"></div>
-
-           <button class="shadcn-btn-outline shadcn-btn-sm flex gap-2 items-center" (click)="saveQuery()">
-             <span class="material-icons text-sm">save</span> Save
+           <button class="rf-compact-btn-outline h-8 px-4" (click)="saveQuery()" [disabled]="svc.loading()">
+             <span class="material-icons text-sm">save</span> 
+             <span class="text-[10px] font-black uppercase">Sync</span>
            </button>
-           <button class="shadcn-btn-default shadcn-btn-sm flex gap-2 items-center" (click)="runQuery()">
-             <span class="material-icons text-sm">play_arrow</span> Run Query
+           <button class="rf-compact-btn-primary h-8 px-5 shadow-sm" (click)="runQuery()" [disabled]="svc.loading()">
+             <span class="material-icons text-sm" [class.animate-spin]="svc.loading()">play_arrow</span> 
+             <span class="text-[10px] font-black uppercase">Execute</span>
            </button>
         </div>
       </header>
 
       <div class="flex-1 flex overflow-hidden">
-        <!-- Sidebar -->
-        <aside class="w-64 border-r bg-muted/10 flex flex-col" *ngIf="!developerMode()">
-           <div class="px-4 py-4 flex items-center justify-between">
-              <h2 class="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Saved Reports</h2>
-              <button class="shadcn-btn-ghost p-1 h-7 w-7" (click)="newQuery()">
+        <!-- Explorer Sidebar -->
+        <aside class="w-64 border-r border-slate-200 bg-slate-50/50 flex flex-col shrink-0">
+           <div class="px-4 py-3 flex items-center justify-between border-b border-slate-100">
+              <h2 class="text-[9px] font-black text-slate-400 uppercase tracking-widest">Saved Queries</h2>
+              <button class="rf-compact-btn-ghost h-7 w-7 p-0" (click)="newQuery()">
                 <span class="material-icons text-sm">add</span>
               </button>
            </div>
-           <div class="flex-1 overflow-y-auto px-2 pb-4">
-              <dx-list [items]="svc.reports()" [height]="'100%'" class="sidebar-list">
-                 <div *dxTemplate="let r of 'item'" (click)="onQueryClick(r)" 
-                    class="group flex items-center gap-3 px-3 py-2 rounded-md transition-colors cursor-pointer"
-                    [class.bg-accent]="activeQuery()?.id === r.id"
-                    [class.text-accent-foreground]="activeQuery()?.id === r.id">
-                    <span class="material-icons text-sm opacity-50 group-hover:opacity-100">description</span>
-                    <span class="text-sm font-medium truncate">{{ r.name }}</span>
+           
+           <div class="flex-1 overflow-y-auto custom-scrollbar px-1 py-2">
+              @if (svc.reports().length === 0 && svc.loading()) {
+                 <div class="px-3 space-y-2">
+                   <div class="h-10 skeleton opacity-40"></div>
+                   <div class="h-10 skeleton opacity-20"></div>
+                   <div class="h-10 skeleton opacity-10"></div>
                  </div>
-              </dx-list>
+              }
+              <div class="flex flex-col gap-0.5">
+                 @for (r of svc.reports(); track r.id) {
+                    <div (click)="onQueryClick(r)" 
+                       class="group flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all cursor-pointer mx-1"
+                       [class.bg-white]="activeQuery()?.id === r.id"
+                       [class.shadow-sm]="activeQuery()?.id === r.id"
+                       [class.text-brand-primary]="activeQuery()?.id === r.id"
+                       [class.text-slate-600]="activeQuery()?.id !== r.id">
+                       <span class="material-icons text-sm opacity-50 group-hover:opacity-100">data_exploration</span>
+                       <span class="text-[11px] font-bold truncate flex-1">{{ r.name }}</span>
+                    </div>
+                 }
+              </div>
            </div>
         </aside>
 
-        <!-- Main Canvas -->
-        <main class="flex-1 flex flex-col p-6 gap-6 overflow-hidden bg-background">
-           <div class="canvas-view flex-1 flex flex-col min-h-0 overflow-hidden rounded-xl border border-border shadow-sm bg-background" *ngIf="activeTab() === 0">
-                 <rf-query-builder 
-                   *ngIf="activeGrid()"
-                   [grid]="activeGrid()!"
-                   (gridChange)="onGridChange($event)"
-                   class="flex-1 flex flex-col min-h-0"
-                 />
-           </div>
-
-           <div class="results-view flex-1 flex flex-col min-h-0 gap-4" *ngIf="activeTab() === 1">
-              <div class="flex items-center justify-between">
-                 <h3 class="text-sm font-medium">Insight Grid</h3>
-                 <div class="flex items-center gap-4 text-[11px] text-muted-foreground font-mono">
-                    <div *ngIf="queryData().length > 0" class="flex gap-4">
-                      <span>ROWS: {{ queryData().length }}</span>
-                      <span *ngIf="queryResult()">TIME: {{ queryResult()?.executionTimeMs }}ms</span>
+        <!-- Main Workspace -->
+        <main class="flex-1 flex flex-col overflow-hidden bg-white relative">
+           <!-- Dynamic View Routing -->
+           @if (activeQuery()) {
+              <div class="flex-1 flex flex-col overflow-hidden anim-fade">
+                 @if (activeTab() === 0) {
+                    <div class="flex-1 flex flex-col min-h-0 bg-slate-50/20">
+                       <rf-query-builder 
+                         *ngIf="activeGrid()"
+                         [grid]="activeGrid()!"
+                         (gridChange)="onGridChange($event)"
+                         class="flex-1"
+                       />
                     </div>
+                 } @else {
+                    <div class="flex-1 flex flex-col min-h-0 p-6 bg-white overflow-hidden">
+                       <div class="flex items-center justify-between mb-4">
+                          <h3 class="text-[10px] font-black text-slate-800 uppercase tracking-widest">Real-time Analysis</h3>
+                          @if (queryData().length > 0) {
+                             <div class="flex items-center gap-4 text-[9px] font-black text-slate-400 uppercase tracking-tighter">
+                                <span>Batch: {{ queryData().length }} Units</span>
+                                <span>Latency: {{ queryResult()?.executionTimeMs || 0 }}ms</span>
+                             </div>
+                          }
+                       </div>
+                       <div class="flex-1 relative rounded-xl border border-slate-200 overflow-hidden shadow-sm">
+                          <rf-report-grid 
+                            *ngIf="activeGrid()"
+                            [grid]="activeGrid()!"
+                            [triggerRun]="triggerRun()"
+                            (onDataFetched)="onDataFetched($event)"
+                          />
+                       </div>
+                    </div>
+                 }
+              </div>
+           } @else {
+              <!-- Empty State -->
+              <div class="absolute inset-0 flex items-center justify-center bg-slate-50/30">
+                 <div class="flex flex-col items-center gap-6 text-center max-w-sm anim-fade">
+                     <div class="w-16 h-16 rounded-2xl bg-slate-900 flex items-center justify-center shadow-lg">
+                       <span class="material-icons text-3xl text-white">query_stats</span>
+                     </div>
+                     <div>
+                       <h3 class="text-lg font-black text-slate-900 uppercase tracking-tight">Select a Data Stream</h3>
+                       <p class="text-xs font-bold text-slate-400 uppercase mt-2 leading-relaxed">Choose an existing report from the side panel or create a new analytic definition.</p>
+                     </div>
+                     <button class="rf-compact-btn-primary px-8 h-10 shadow-md" (click)="newQuery()">
+                        <span class="material-icons text-sm">add</span>
+                        <span>CREATE NEW DEFINITION</span>
+                     </button>
                  </div>
               </div>
-              <div class="shadcn-card flex-1 relative overflow-hidden border-border/50">
-                 <rf-report-grid 
-                   *ngIf="activeGrid()"
-                   [grid]="activeGrid()!"
-                   [triggerRun]="triggerRun()"
-                   (onDataFetched)="onDataFetched($event)"
-                 />
-                 <dx-load-panel [visible]="svc.loading()" [showPane]="false"></dx-load-panel>
-              </div>
-           </div>
-
-           <div class="fixed inset-0 pointer-events-none flex items-center justify-center" *ngIf="!activeQuery()">
-              <div class="flex flex-col items-center gap-4 text-center max-w-xs anim-fade-in pointer-events-auto">
-                  <div class="w-16 h-16 rounded-full bg-muted flex items-center justify-center">
-                    <span class="material-icons text-3xl text-muted-foreground">analytics</span>
-                  </div>
-                  <div>
-                    <h3 class="text-lg font-semibold">Ready for Analysis</h3>
-                    <p class="text-sm text-muted-foreground mt-1">Select a report from the sidebar or scan a schema in Developer Mode to begin.</p>
-                  </div>
-                  <button class="shadcn-btn-secondary shadcn-btn-sm mt-2" (click)="newQuery()">Create New Report</button>
-              </div>
-           </div>
+           }
         </main>
-
-        <!-- Discovery Panel -->
-        <div class="w-80 border-l bg-muted/5 anim-fade-in" *ngIf="developerMode()">
-           <rf-schema-discovery />
-        </div>
       </div>
     </div>
-
-    <!-- Shadcn-style Modal -->
-    <dx-popup
-       [visible]="pinModalVisible()"
-       [width]="400" [height]="'auto'" [showTitle]="false"
-       (onHiding)="pinModalVisible.set(false)"
-       container=".cockpit"
-    >
-       <div *dxTemplate="let data of 'content'" class="flex flex-col gap-6 p-6">
-          <div class="flex flex-col gap-1.5">
-             <h2 class="text-lg font-semibold leading-none tracking-tight">Pin to Dashboard</h2>
-             <p class="text-sm text-muted-foreground">Choose a dashboard and title for this widget.</p>
-          </div>
-          
-          <div class="flex flex-col gap-4">
-             <div class="flex flex-col gap-2">
-                <label class="text-sm font-medium leading-none">Target Dashboard</label>
-                <dx-select-box [items]="dashSvc.dashboards()" displayExpr="name" valueExpr="id" [(value)]="pinTargetId"></dx-select-box>
-             </div>
-             <div class="flex flex-col gap-2">
-                <label class="text-sm font-medium leading-none">Widget Title</label>
-                <dx-text-box [(value)]="pinTitle"></dx-text-box>
-             </div>
-          </div>
-
-          <div class="flex justify-end gap-3 mt-2">
-             <button class="shadcn-btn-ghost h-9 px-4" (click)="pinModalVisible.set(false)">Cancel</button>
-             <button class="shadcn-btn-default h-9 px-4" (click)="confirmPin()">Pin Component</button>
-          </div>
-       </div>
-    </dx-popup>
   `,
   styles: [`
-    .switch { width: 32px; height: 18px; background: hsl(var(--muted)); border-radius: 9px; position: relative; border: 1px solid hsl(var(--border)); cursor: pointer; transition: 0.2s ease-in-out; &.active { background: hsl(var(--primary)); border-color: hsl(var(--primary)); } .switch-handle { width: 12px; height: 12px; background: hsl(var(--background)); border-radius: 50%; position: absolute; top: 2px; left: 2px; transition: 0.2s cubic-bezier(0.4, 0, 0.2, 1); } &.active .switch-handle { left: 16px; background: hsl(var(--primary-foreground)); } }
-    .sidebar-list { ::ng-deep .dx-list-item-content { padding: 0 !important; } }
-    dx-tabs { height: auto !important; border: none !important; }
+    :host { display: block; height: 100%; }
   `]
 })
 export class QueryModuleComponent implements OnInit {
@@ -194,17 +173,8 @@ export class QueryModuleComponent implements OnInit {
 
   activeTab = signal(0);
   queryResult = signal<any>(null);
-  developerMode = signal(false);
   triggerRun = signal(false);
   queryData = signal<any[]>([]);
-
-  // Pin Modal State
-  pinModalVisible = signal(false);
-  pinTargetId: string = '';
-  pinTitle: string = '';
-  pinType: 'grid' | 'chart' | 'pivot' = 'grid';
-
-  defaultChart: ChartDefinition = { type: 'bar', xAxis: '', yAxis: '', aggregation: 'SUM' };
 
   activeQuery = computed(() => this.svc.activeReport());
   activeGrid  = computed(() => this.activeQuery()?.grids[0] || null);
@@ -213,10 +183,7 @@ export class QueryModuleComponent implements OnInit {
     this.svc.loadReports().subscribe(r => this.svc.reports.set(r));
     this.svc.loadEntities();
     this.dashSvc.loadDashboards();
-    document.body.classList.add('compact');
   }
-
-  toggleDevMode() { this.developerMode.set(!this.developerMode()); }
 
   onQueryClick(report: ReportDefinition) {
     this.svc.setActiveReport(report);
@@ -238,12 +205,12 @@ export class QueryModuleComponent implements OnInit {
 
   newQuery() {
     const report: ReportDefinition = {
-      id: '', name: 'New Query', category: 'Queries', createdBy: 'currentUser',
+      id: '', name: 'New Analytic Query', category: 'General', createdBy: 'me',
       createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(),
       isPublic: false, sharedFilters: { id: crypto.randomUUID(), logic: 'AND', conditions: [], groups: [] },
       grids: [{
-        id: crypto.randomUUID(), title: 'Query Results', entity: 'Transactions',
-        columns: ['Id'], columnConfigs: {},
+        id: crypto.randomUUID(), title: 'Query Stream', entity: '',
+        columns: [], columnConfigs: {},
         groupBy: [], aggregations: [], sorts: [], joins: [],
         activeView: 'grid'
       }]
@@ -261,34 +228,5 @@ export class QueryModuleComponent implements OnInit {
     const q = this.activeQuery();
     if (!q) return;
     this.svc.saveReport(q).subscribe(() => this.svc.loadReports().subscribe());
-  }
-
-  showPinModal() {
-     const q = this.activeQuery();
-     if (!q) return;
-     this.pinTitle = q.name;
-     this.pinModalVisible.set(true);
-  }
-
-  confirmPin() {
-     const dashboards = this.dashSvc.dashboards();
-     const target = dashboards.find(d => d.id === this.pinTargetId);
-     const report = this.activeQuery();
-
-     if (!target || !report) return;
-
-     const newWidget: DashboardWidget = {
-        id: crypto.randomUUID(),
-        reportId: report.id,
-        title: this.pinTitle,
-        type: 'grid',
-        x: 0, y: 0, width: 40, height: 40
-     };
-
-     const updatedDash = { ...target, widgets: [...target.widgets, newWidget] };
-     this.dashSvc.saveDashboard(updatedDash).subscribe(() => {
-        this.notify.success(`Pinned to ${target.name}`);
-        this.pinModalVisible.set(false);
-     });
   }
 }

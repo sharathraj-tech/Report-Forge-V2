@@ -39,7 +39,7 @@ import { createCondition, createGroup } from '../../../core/models/report.models
           </div>
           
           <!-- Condition Component -->
-          <div class="rf-shaded-block flex-1 min-h-[36px] flex items-center bg-white/80 backdrop-blur-sm shadow-sm transition-all hover:bg-white hover:shadow-md border-slate-200/60">
+          <div class="rf-shaded-block flex-1 min-h-[36px] flex items-center bg-white shadow-sm transition-all hover:shadow-md border border-slate-200">
              <rf-filter-condition
                class="flex-1"
                [condition]="cond"
@@ -59,7 +59,7 @@ import { createCondition, createGroup } from '../../../core/models/report.models
            <div class="rf-logic-connector-h !left-[-18px]"></div>
            <div class="rf-junction-node !left-[-22px]" [class.active]="true"></div>
 
-           <div class="flex-1 py-1 border border-dashed border-slate-200 rounded-lg p-4 bg-slate-50/30 backdrop-blur-sm transition-all hover:bg-slate-50/60 hover:border-brand-blue/30">
+           <div class="flex-1 py-1 border border-dashed border-slate-200 rounded-lg p-4 bg-slate-50 transition-all hover:bg-slate-100 hover:border-brand-primary/30">
              <rf-filter-group
                class="block"
                [group]="subGroup"
@@ -85,7 +85,7 @@ import { createCondition, createGroup } from '../../../core/models/report.models
             <button 
               class="text-[9px] font-black px-3 py-1 rounded transition-all duration-300 ease-out flex items-center gap-1.5"
               [class.bg-white]="group.logic === 'AND'"
-              [class.text-brand-blue]="group.logic === 'AND'"
+              [class.text-brand-primary]="group.logic === 'AND'"
               [class.shadow-sm]="group.logic === 'AND'"
               [class.text-slate-400]="group.logic !== 'AND'"
               (click)="setLogic('AND')">
@@ -95,7 +95,7 @@ import { createCondition, createGroup } from '../../../core/models/report.models
             <button 
               class="text-[9px] font-black px-3 py-1 rounded transition-all duration-300 ease-out flex items-center gap-1.5"
               [class.bg-white]="group.logic === 'OR'"
-              [class.text-brand-blue]="group.logic === 'OR'"
+              [class.text-brand-primary]="group.logic === 'OR'"
               [class.shadow-sm]="group.logic === 'OR'"
               [class.text-slate-400]="group.logic !== 'OR'"
               (click)="setLogic('OR')">
@@ -108,10 +108,10 @@ import { createCondition, createGroup } from '../../../core/models/report.models
 
       <!-- Quick Add Actions -->
       <div class="flex items-center gap-2 mt-2 ml-19">
-         <button class="shadcn-btn-ghost text-[10px] font-bold py-1 px-3 border border-dashed rounded text-muted-foreground hover:text-brand-blue hover:border-brand-blue transition-colors" (click)="addCondition()">
+         <button class="rf-compact-btn-ghost text-[10px] font-bold border border-dashed border-slate-200" (click)="addCondition()">
             + CONDITION
          </button>
-         <button class="shadcn-btn-ghost text-[10px] font-bold py-1 px-3 border border-dashed rounded text-muted-foreground hover:text-brand-blue hover:border-brand-blue transition-colors" (click)="addGroup()">
+         <button class="rf-compact-btn-ghost text-[10px] font-bold border border-dashed border-slate-200" (click)="addGroup()">
             + GROUP
          </button>
       </div>

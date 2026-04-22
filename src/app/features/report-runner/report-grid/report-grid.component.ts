@@ -14,54 +14,56 @@ import type { GridDefinition, QueryResult, FieldMetadata } from '../../../core/m
   imports: [CommonModule, DxDataGridModule, DxCheckBoxModule],
   template: `
     <div class="flex flex-col h-full bg-white anim-fade">
-      <!-- Dashboard-style Header / Toolbar -->
+      <!-- Toolbar -->
       <div class="h-12 flex items-center justify-between px-5 bg-white border-b shrink-0">
         <div class="flex items-center gap-3">
-          <span class="text-[10px] font-extrabold text-slate-400 uppercase tracking-widest">{{ grid.title || 'Report Grid' }}</span>
+          <span class="text-[9px] font-black text-slate-400 uppercase tracking-[0.2em]">{{ grid.title || 'Data Engine' }}</span>
           <div class="h-4 w-px bg-slate-100"></div>
-          <span class="text-[9px] font-bold text-slate-400 uppercase bg-slate-50 px-2 py-0.5 rounded border border-slate-100 flex items-center gap-1.5" *ngIf="result() && !loading()">
-            <span class="h-1.5 w-1.5 rounded-full bg-green-500"></span>
-            {{ result()!.data.length }} Records
-          </span>
-          <span class="text-[9px] font-bold text-slate-400 uppercase bg-blue-50 px-2 py-0.5 rounded border border-blue-100 flex items-center gap-1.5" *ngIf="result() && !loading()">
-            <span class="material-icons text-[10px]">timer</span>
-            {{ result()!.executionTimeMs }}ms
-          </span>
-          <span class="text-[9px] font-bold text-slate-400 italic" *ngIf="loading()">Fetching results...</span>
+          
+          @if (loading()) {
+            <div class="flex items-center gap-2">
+               <div class="h-1.5 w-1.5 rounded-full bg-brand-primary animate-pulse"></div>
+               <span class="text-[9px] font-black text-slate-400 uppercase tracking-tighter italic">Streaming...</span>
+            </div>
+          } @else if (result()) {
+            <div class="flex items-center gap-3">
+               <span class="text-[9px] font-black text-slate-500 uppercase bg-slate-50 px-2 py-0.5 rounded border border-slate-200">
+                 {{ result()!.data.length }} RECORDS
+               </span>
+               <span class="text-[9px] font-black text-slate-400 uppercase bg-slate-50 px-2 py-0.5 rounded border border-slate-200 flex items-center gap-1">
+                 <span class="material-icons text-[10px]">timer</span>
+                 {{ result()!.executionTimeMs }}MS
+               </span>
+            </div>
+          }
         </div>
 
         <div class="flex items-center gap-2">
-           <!-- Auto Refresh Toggle -->
-           <div class="flex items-center gap-2 mr-2 px-2 py-1 rounded bg-slate-50 border border-slate-100">
-              <span class="text-[9px] font-bold text-slate-500 uppercase tracking-tighter">Auto-Refresh</span>
-              <dx-check-box [value]="autoRefresh()" (onValueChanged)="autoRefresh.set($event.value)" />
-           </div>
-
-           <button class="shadcn-btn-ghost w-8 h-8 p-0" title="Refresh Now" (click)="refresh()" [disabled]="loading()">
-              <span class="material-icons text-sm" [class.animate-spin]="loading()">refresh</span>
+           <button class="rf-compact-btn-ghost h-8 w-8 p-0" title="Manual Refresh" (click)="refresh()" [disabled]="loading()">
+              <span class="material-icons text-xs" [class.animate-spin]="loading()">refresh</span>
            </button>
            
            <div class="h-4 w-px bg-slate-100 mx-1"></div>
 
-           <button class="shadcn-btn-outline h-7 px-3 text-[10px] font-bold rounded flex items-center gap-2 border-slate-200" (click)="onExport()">
-              <span class="material-icons text-xs">download</span> EXPORT EXCEL
-           </button>
-           <button class="shadcn-btn-outline h-7 px-3 text-[10px] font-bold rounded flex items-center gap-2 border-slate-200" (click)="onExportCSV()">
-              <span class="material-icons text-xs">file_present</span> CSV
+           <button class="rf-compact-btn-outline h-7 px-3 text-[9px] font-black uppercase tracking-widest shadow-sm" (click)="onExport()">
+              <span class="material-icons text-xs">download</span> EXPORT
            </button>
         </div>
       </div>
 
       <div class="flex-1 min-h-0 relative">
-        <!-- Loading Overlay -->
-        <div *ngIf="loading()" class="absolute inset-0 bg-white/80 backdrop-blur-[1px] flex items-center justify-center z-10 anim-fade">
-          <div class="flex flex-col items-center gap-4">
-            <div class="w-8 h-8 border-2 border-brand-blue/20 border-t-brand-blue rounded-full animate-spin"></div>
-            <span class="text-[11px] font-bold text-slate-500 uppercase tracking-widest">Processing Query...</span>
-          </div>
+        <!-- Skeleton Grid -->
+        <div *ngIf="loading()" class="absolute inset-0 bg-white flex flex-col p-4 gap-3 z-10 anim-fade">
+           <div class="h-10 w-full skeleton opacity-40"></div>
+           <div class="h-8 w-full skeleton opacity-20"></div>
+           <div class="h-8 w-full skeleton opacity-10"></div>
+           <div class="h-8 w-full skeleton opacity-10"></div>
+           <div class="h-8 w-full skeleton opacity-10"></div>
+           <div class="h-8 w-full skeleton opacity-10"></div>
+           <div class="h-8 w-full skeleton opacity-10"></div>
         </div>
 
-        <!-- Grid -->
+        <!-- Real Data Grid -->
         <div class="h-full" *ngIf="!loading()">
           @if (result() && result()!.data.length > 0) {
             <dx-data-grid
@@ -71,6 +73,7 @@ import type { GridDefinition, QueryResult, FieldMetadata } from '../../../core/m
               [hoverStateEnabled]="true" [allowColumnResizing]="true"
               [allowColumnReordering]="true" [columnAutoWidth]="false"
               [rowAlternationEnabled]="true"
+              class="rf-grid-modern"
               (onExporting)="onExporting($event)"
               (onRowClick)="onRowClick($event)"
               (onCellPrepared)="onCellPrepared($event)"
@@ -86,58 +89,44 @@ import type { GridDefinition, QueryResult, FieldMetadata } from '../../../core/m
                 />
               }
 
-              <!-- Versatile Cell Template -->
               <div *dxTemplate="let d of 'cellTemplate'">
                 <ng-container [ngSwitch]="true">
-                  <!-- Status Badges -->
                   <div *ngSwitchCase="d.column.dataField.toLowerCase() === 'status'" class="flex">
                     <span class="rf-badge" [ngClass]="'rf-badge-' + (d.value?.toString().toLowerCase() || 'review')">
                        {{ d.value }}
                     </span>
                   </div>
-                  
-                  <!-- Type Badges -->
-                  <div *ngSwitchCase="d.column.dataField.toLowerCase() === 'type'" class="flex">
-                    <span class="rf-badge-type" [ngClass]="'rf-badge-type-' + (d.value?.toString().toLowerCase() || 'sql')">
-                       {{ d.value }}
-                    </span>
-                  </div>
-
-                  <!-- Date Formatting -->
                   <div *ngSwitchCase="d.column.dataType === 'date' || d.column.dataType === 'datetime'">
-                    <span class="text-slate-500 font-medium">{{ d.value | date:'MMM d, yyyy HH:mm' }}</span>
+                    <span class="text-slate-500 font-bold">{{ d.value | date:'MMM d, yyyy' }}</span>
                   </div>
-
-                  <!-- Default Text -->
                   <div *ngSwitchDefault>
-                    <span class="text-slate-700 font-medium">{{ d.value }}</span>
+                    <span class="text-slate-800 font-bold">{{ d.value }}</span>
                   </div>
                 </ng-container>
               </div>
 
               <dxo-paging [pageSize]="25" />
               <dxo-pager [showPageSizeSelector]="true" [allowedPageSizes]="[25,50,100]" [showInfo]="true" />
-              <dxo-column-chooser [enabled]="true" />
               <dxo-header-filter [visible]="true" />
               <dxo-filter-row [visible]="true" />
               <dxo-selection mode="multiple" />
             </dx-data-grid>
           } @else if (result() && result()!.data.length === 0) {
             <div class="h-full flex flex-col items-center justify-center gap-4 text-center anim-fade">
-              <span class="material-icons text-slate-200 text-5xl">manage_search</span>
+              <span class="material-icons text-slate-100 text-6xl">search_off</span>
               <div class="flex flex-col gap-1">
-                <span class="text-[11px] font-extrabold text-slate-400 uppercase tracking-widest">No matching results</span>
-                <span class="text-xs text-slate-400">Refine your query filters to see data here.</span>
+                <span class="text-[10px] font-black text-slate-400 uppercase tracking-widest">Null Set Returned</span>
+                <span class="text-[9px] font-bold text-slate-300 uppercase">Adjust parameters to broaden scope.</span>
               </div>
             </div>
           } @else {
             <div class="h-full flex flex-col items-center justify-center gap-6 text-center anim-fade">
-              <div class="w-16 h-16 rounded-3xl bg-slate-50 border border-dashed border-slate-200 flex items-center justify-center mb-2">
-                <span class="material-icons text-slate-400 text-3xl">play_circle</span>
+              <div class="w-20 h-20 rounded-[2.5rem] bg-slate-50 border border-slate-100 flex items-center justify-center mb-2 shadow-inner">
+                <span class="material-icons text-slate-300 text-4xl">insights</span>
               </div>
               <div class="flex flex-col gap-1">
-                <span class="text-[11px] font-extrabold text-slate-400 uppercase tracking-widest">Ready for Analytics</span>
-                <span class="text-xs text-slate-400">Execute the designer to generate visual results.</span>
+                <span class="text-[11px] font-black text-slate-900 uppercase tracking-widest">Intelligence Awaiting</span>
+                <span class="text-[9px] font-bold text-slate-400 uppercase tracking-tighter">Configure parameters and execute to stream results.</span>
               </div>
             </div>
           }
@@ -146,7 +135,12 @@ import type { GridDefinition, QueryResult, FieldMetadata } from '../../../core/m
     </div>
   `,
   styles: [`
-    dx-data-grid { height: 100% !important; }
+    :host { display: block; height: 100%; }
+    ::ng-deep .rf-grid-modern {
+       height: 100% !important;
+       .dx-datagrid-headers { background-color: #f8fafc !important; }
+       .dx-row-alt { background-color: #fcfcfc !important; }
+    }
   `]
 })
 export class ReportGridComponent implements OnChanges {
@@ -168,34 +162,21 @@ export class ReportGridComponent implements OnChanges {
 
   ngOnInit() {
     this.refreshTimer = setInterval(() => {
-      if (this.autoRefresh() && !this.loading()) {
-        this.refresh();
-      }
-    }, 30000); // 30 seconds
+      if (this.autoRefresh() && !this.loading()) this.refresh();
+    }, 30000);
   }
 
-  ngOnDestroy() {
-    if (this.refreshTimer) clearInterval(this.refreshTimer);
-  }
+  ngOnDestroy() { if (this.refreshTimer) clearInterval(this.refreshTimer); }
 
-  ngOnChanges() {
-    if (this.triggerRun) this.onRun();
-  }
+  ngOnChanges() { if (this.triggerRun) this.onRun(); }
 
   onRun() {
     if (!this.grid.entity) return;
     this.loading.set(true);
     const input = {
-      entity: this.grid.entity,
-      columns: this.grid.columns,
-      calculatedColumns: this.grid.calculatedColumns ?? [],
-      filters: this.grid.filters,
-      groupBy: this.grid.groupBy,
-      aggregations: this.grid.aggregations,
-      sorts: this.grid.sorts,
-      joins: this.grid.joins || [],
-      page: 1,
-      pageSize: 50
+      entity: this.grid.entity, columns: this.grid.columns, calculatedColumns: this.grid.calculatedColumns ?? [],
+      filters: this.grid.filters, groupBy: this.grid.groupBy, aggregations: this.grid.aggregations,
+      sorts: this.grid.sorts, joins: this.grid.joins || [], page: 1, pageSize: 50
     };
     this.svc.runReport(input).subscribe({
       next: (res: QueryResult | undefined) => {
@@ -211,54 +192,23 @@ export class ReportGridComponent implements OnChanges {
   }
 
   onExport() {
-    if (!this.dataGrid?.instance) {
-      this.notify.warning('No data to export.');
-      return;
-    }
+    if (!this.dataGrid?.instance) { this.notify.warning('No data to export.'); return; }
     const workbook = new Workbook();
     const worksheet = workbook.addWorksheet(this.grid.title || 'Report');
-    exportDataGrid({
-      component: this.dataGrid.instance,
-      worksheet,
-      autoFilterEnabled: true,
-    }).then(() => {
+    exportDataGrid({ component: this.dataGrid.instance, worksheet, autoFilterEnabled: true }).then(() => {
       workbook.xlsx.writeBuffer().then((buffer) => {
         saveAs(new Blob([buffer], { type: 'application/octet-stream' }), `${this.grid.title || 'Report'}.xlsx`);
-        this.notify.success('Export complete!');
+        this.notify.success('Manifest exported.');
       });
     });
   }
 
-  onExportCSV() {
-    const data = this.result()?.data;
-    if (!data || data.length === 0) {
-      this.notify.warning('No data to export.');
-      return;
-    }
-    const headers = Object.keys(data[0]);
-    const csvContent = [
-      headers.join(','),
-      ...data.map(row => headers.map(h => `"${row[h] ?? ''}"`).join(','))
-    ].join('\n');
-
-    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-    saveAs(blob, `${this.grid.title || 'report'}.csv`);
-    this.notify.success('CSV export complete!');
-  }
-
-  refresh() {
-    this.onRun();
-  }
+  refresh() { this.onRun(); }
 
   onExporting(e: any) {
     const workbook = new Workbook();
     const worksheet = workbook.addWorksheet('Report');
-
-    exportDataGrid({
-      component: e.component,
-      worksheet,
-      autoFilterEnabled: true,
-    }).then(() => {
+    exportDataGrid({ component: e.component, worksheet, autoFilterEnabled: true }).then(() => {
       workbook.xlsx.writeBuffer().then((buffer) => {
         saveAs(new Blob([buffer], { type: 'application/octet-stream' }), `${this.grid.title}.xlsx`);
       });
@@ -280,24 +230,17 @@ export class ReportGridComponent implements OnChanges {
     const firstRow = res.data[0];
     const cols = Object.keys(firstRow).map(key => {
       let meta: FieldMetadata | undefined;
-      
       if (key.includes('.')) {
         const parts = key.split('.');
-        const entityName = parts[0];
-        const fieldName = parts[1];
-        meta = this.svc.getEntityFields(entityName).find((f: FieldMetadata) => f.name === fieldName);
+        meta = this.svc.getEntityFields(parts[0]).find((f: FieldMetadata) => f.name === parts[1]);
       } else {
         meta = this.svc.getEntityFields(this.grid.entity).find((f: FieldMetadata) => f.name === key);
       }
-
       const conf = this.grid.columnConfigs?.[key];
       return {
-        field: key,
-        caption: conf?.headerName || meta?.displayName || key,
-        type: this.mapType(meta?.dataType ?? 'string'),
-        width: conf?.width,
-        alignment: conf?.align || 'left',
-        visible: conf ? conf.visible : true
+        field: key, caption: conf?.headerName || meta?.displayName || key,
+        type: this.mapType(meta?.dataType ?? 'string'), width: conf?.width,
+        alignment: conf?.align || 'left', visible: conf ? conf.visible : true
       };
     });
     this.columnDefs.set(cols);
@@ -305,7 +248,6 @@ export class ReportGridComponent implements OnChanges {
 
   onCellPrepared(e: any) {
     if (e.rowType !== 'data' || !e.column.dataField) return;
-
     const conf = this.grid.columnConfigs?.[e.column.dataField];
     if (conf?.formattingRules) {
       for (const rule of conf.formattingRules) {

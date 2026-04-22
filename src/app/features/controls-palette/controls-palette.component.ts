@@ -9,122 +9,100 @@ import type { EntityMetadata, ReportDefinition } from '../../core/models/report.
   standalone: true,
   imports: [CommonModule],
   template: `
-    <div class="flex flex-col h-full bg-background/50">
-      <!-- Header with Search -->
-      <div class="px-5 py-6 border-b flex flex-col gap-5">
-        <div class="flex items-center gap-2 text-primary opacity-80">
-          <span class="material-icons text-lg">explore</span>
-          <h2 class="text-[11px] font-bold uppercase tracking-[0.2em] leading-none">Navigator</h2>
+    <div class="flex flex-col h-full bg-white border-r border-slate-200">
+      <!-- Search & Title -->
+      <div class="px-4 py-4 border-b border-slate-100 flex flex-col gap-3">
+        <div class="flex items-center gap-2">
+          <span class="material-icons text-slate-400 text-xs">explore</span>
+          <h2 class="text-[9px] font-black uppercase tracking-widest text-slate-800">Explorer</h2>
         </div>
         
-        <div class="relative group">
-          <span class="material-icons absolute left-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground group-focus-within:text-primary transition-colors">search</span>
+        <div class="relative">
+          <span class="material-icons absolute left-2 top-1/2 -translate-y-1/2 text-[14px] text-slate-400">search</span>
           <input
-            class="w-full bg-background border h-9 pl-9 pr-4 rounded-md text-sm transition-all focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary placeholder:text-muted-foreground/50"
+            class="w-full bg-slate-50 border border-slate-200 h-8 pl-8 pr-3 rounded-lg text-[11px] font-medium transition-all focus:outline-none focus:ring-2 focus:ring-brand-primary/10 focus:border-brand-primary placeholder:text-slate-400"
             placeholder="Search assets..."
             (input)="onSearch($event)"
           />
         </div>
       </div>
 
-      <div class="flex-1 overflow-y-auto custom-scrollbar px-2 py-4 flex flex-col gap-2">
+      <div class="flex-1 overflow-y-auto custom-scrollbar p-2 flex flex-col gap-2">
         <!-- Entities Section -->
-        <div class="rounded-lg border bg-card/40 overflow-hidden shadow-sm">
-          <div class="flex items-center justify-between px-4 py-3 cursor-pointer hover:bg-muted/50 transition-colors border-b" (click)="entitiesOpen.set(!entitiesOpen())">
+        <div class="rounded-lg border border-slate-100 bg-slate-50/30 overflow-hidden">
+          <div class="flex items-center justify-between px-3 py-2 cursor-pointer hover:bg-slate-100 transition-colors border-b border-slate-100" (click)="entitiesOpen.set(!entitiesOpen())">
             <div class="flex items-center gap-2">
-               <span class="material-icons text-sm transition-transform duration-200" [class.rotate-90]="entitiesOpen()">chevron_right</span>
-               <span class="text-[11px] font-bold uppercase tracking-widest text-foreground/80">Data Schema</span>
+               <span class="material-icons text-xs transition-transform duration-200 text-slate-400" [class.rotate-90]="entitiesOpen()">chevron_right</span>
+               <span class="text-[9px] font-black uppercase tracking-widest text-slate-600">Schema Objects</span>
             </div>
-            <span class="text-[10px] font-bold bg-muted px-2 py-0.5 rounded-full text-muted-foreground">{{ filteredEntities().length }}</span>
+            <span class="text-[8px] font-black bg-slate-200 px-1.5 py-0.5 rounded-full text-slate-600">{{ filteredEntities().length }}</span>
           </div>
           
-          <div class="px-2 py-2 flex flex-col gap-1" *ngIf="entitiesOpen()">
+          <div class="p-1 flex flex-col gap-0.5" *ngIf="entitiesOpen()">
             @for (entity of filteredEntities(); track entity.id) {
-              <div class="group flex items-center gap-3 p-2 rounded-md hover:bg-primary/5 cursor-pointer transition-all border border-transparent hover:border-primary/20" (click)="openEntity(entity)">
-                <div class="h-8 w-8 rounded bg-muted/50 flex items-center justify-center text-muted-foreground group-hover:bg-primary/10 group-hover:text-primary transition-colors">
-                  <span class="material-icons text-lg">table_chart</span>
+              <div class="group flex items-center gap-2 p-2 rounded-lg hover:bg-white hover:shadow-sm cursor-pointer transition-all border border-transparent hover:border-slate-200" (click)="openEntity(entity)">
+                <div class="h-7 w-7 rounded bg-slate-100 flex items-center justify-center text-slate-400 group-hover:bg-brand-primary/10 group-hover:text-brand-primary transition-colors">
+                  <span class="material-icons text-sm">table_rows</span>
                 </div>
                 <div class="flex-1 min-w-0">
-                  <div class="text-[13px] font-semibold text-foreground truncate leading-tight group-hover:text-primary transition-colors">{{ entity.displayName }}</div>
-                  <div class="text-[11px] text-muted-foreground truncate opacity-70">{{ entity.fields.length }} attributes · {{ entity.providerKey }}</div>
+                  <div class="text-[11px] font-bold text-slate-800 truncate leading-tight">{{ entity.displayName }}</div>
+                  <div class="text-[9px] font-bold text-slate-400 truncate uppercase tracking-tighter">{{ entity.fields.length }} ATTR</div>
                 </div>
-                <button class="shadcn-btn-ghost w-7 h-7 p-0 opacity-0 group-hover:opacity-100 transition-opacity" (click)="addGrid(entity, $event)">
-                  <span class="material-icons text-sm">add_box</span>
+                <button class="rf-compact-btn-ghost h-6 w-6 p-0 opacity-0 group-hover:opacity-100" (click)="addGrid(entity, $event)">
+                  <span class="material-icons text-xs">add</span>
                 </button>
-              </div>
-            }
-            @empty {
-              <div class="py-12 text-center">
-                 <span class="material-icons text-muted-foreground/30 text-3xl">search_off</span>
-                 <p class="text-[11px] font-medium text-muted-foreground mt-2">No schema objects</p>
               </div>
             }
           </div>
         </div>
 
-        <!-- Saved Assets Section -->
-        <div class="rounded-lg border bg-card/40 overflow-hidden shadow-sm">
-          <div class="flex items-center justify-between px-4 py-3 cursor-pointer hover:bg-muted/50 transition-colors border-b" (click)="reportsOpen.set(!reportsOpen())">
+        <!-- Saved Reports -->
+        <div class="rounded-lg border border-slate-100 bg-slate-50/30 overflow-hidden">
+          <div class="flex items-center justify-between px-3 py-2 cursor-pointer hover:bg-slate-100 transition-colors border-b border-slate-100" (click)="reportsOpen.set(!reportsOpen())">
             <div class="flex items-center gap-2">
-               <span class="material-icons text-sm transition-transform duration-200" [class.rotate-90]="reportsOpen()">chevron_right</span>
-               <span class="text-[11px] font-bold uppercase tracking-widest text-foreground/80">Saved Reports</span>
+               <span class="material-icons text-xs transition-transform duration-200 text-slate-400" [class.rotate-90]="reportsOpen()">chevron_right</span>
+               <span class="text-[9px] font-black uppercase tracking-widest text-slate-600">Repository</span>
             </div>
-            <button class="p-1 hover:bg-muted rounded transition-colors" (click)="loadReports(); $event.stopPropagation()" title="Sync Repository">
-               <span class="material-icons text-sm text-muted-foreground">sync</span>
+            <button class="h-5 w-5 hover:bg-slate-200 rounded flex items-center justify-center" (click)="loadReports(); $event.stopPropagation()">
+               <span class="material-icons text-xs text-slate-400">sync</span>
             </button>
           </div>
           
-          <div class="px-2 py-2 flex flex-col gap-1" *ngIf="reportsOpen()">
+          <div class="p-1 flex flex-col gap-0.5" *ngIf="reportsOpen()">
             @for (report of savedReports(); track report.id) {
-              <div class="group flex items-center gap-3 p-2 rounded-md hover:bg-muted/80 cursor-pointer transition-all border border-transparent" (click)="openReport(report)">
-                <div class="h-8 w-8 rounded-full bg-primary/5 flex items-center justify-center text-primary/60 border border-primary/10">
-                  <span class="material-icons text-sm">analytics</span>
+              <div class="group flex items-center gap-2 p-2 rounded-lg hover:bg-white hover:shadow-sm cursor-pointer transition-all border border-transparent hover:border-slate-200" (click)="openReport(report)">
+                <div class="h-7 w-7 rounded-full bg-slate-100 flex items-center justify-center text-slate-400 border border-slate-200">
+                  <span class="material-icons text-xs">analytics</span>
                 </div>
                 <div class="flex-1 min-w-0">
-                  <div class="text-[13px] font-semibold text-foreground truncate leading-tight">{{ report.name }}</div>
-                  <div class="text-[11px] text-muted-foreground truncate opacity-70">{{ report.category }} · {{ report.grids.length || 0 }} Views</div>
+                  <div class="text-[11px] font-bold text-slate-800 truncate leading-tight">{{ report.name }}</div>
+                  <div class="text-[9px] font-bold text-slate-400 truncate uppercase tracking-tighter">{{ report.category }}</div>
                 </div>
-                <button class="h-7 w-7 text-destructive/40 hover:text-destructive hover:bg-destructive/10 rounded transition-all opacity-0 group-hover:opacity-100 flex items-center justify-center" (click)="deleteReport(report, $event)">
-                  <span class="material-icons text-sm">delete_outline</span>
+                <button class="h-6 w-6 text-red-300 hover:text-red-500 rounded opacity-0 group-hover:opacity-100 flex items-center justify-center" (click)="deleteReport(report, $event)">
+                  <span class="material-icons text-xs">delete_outline</span>
                 </button>
-              </div>
-            }
-            @empty {
-               <div class="py-12 text-center">
-                 <span class="material-icons text-muted-foreground/30 text-3xl">history</span>
-                 <p class="text-[11px] font-medium text-muted-foreground mt-2">Repository is empty</p>
               </div>
             }
           </div>
         </div>
 
-        <!-- Quick Actions -->
-        <div class="rounded-lg border bg-card/40 overflow-hidden shadow-sm">
-          <div class="flex items-center justify-between px-4 py-3 cursor-pointer hover:bg-muted/50 transition-colors border-b" (click)="componentsOpen.set(!componentsOpen())">
+        <!-- Insert Blocks -->
+        <div class="rounded-lg border border-slate-100 bg-slate-50/30 overflow-hidden">
+          <div class="flex items-center justify-between px-3 py-2 cursor-pointer hover:bg-slate-100 transition-colors border-b border-slate-100" (click)="componentsOpen.set(!componentsOpen())">
             <div class="flex items-center gap-2">
-               <span class="material-icons text-sm transition-transform duration-200" [class.rotate-90]="componentsOpen()">chevron_right</span>
-               <span class="text-[11px] font-bold uppercase tracking-widest text-foreground/80">Insert Controls</span>
+               <span class="material-icons text-xs transition-transform duration-200 text-slate-400" [class.rotate-90]="componentsOpen()">chevron_right</span>
+               <span class="text-[9px] font-black uppercase tracking-widest text-slate-600">Components</span>
             </div>
           </div>
           
-          <div class="p-3" *ngIf="componentsOpen()">
-            <div class="grid grid-cols-2 gap-2">
-              <div class="flex flex-col items-center gap-2 p-4 rounded-lg bg-background border border-border/50 hover:border-primary/50 hover:bg-primary/5 transition-all cursor-pointer group shadow-sm" (click)="addEmptyGrid()">
-                <span class="material-icons text-muted-foreground group-hover:text-primary transition-colors">grid_view</span>
-                <span class="text-[10px] font-bold uppercase tracking-tighter text-muted-foreground group-hover:text-foreground">Grid Pane</span>
-              </div>
-              <div class="flex flex-col items-center gap-2 p-4 rounded-lg bg-background border border-border/50 hover:border-primary/50 hover:bg-primary/5 transition-all cursor-pointer group shadow-sm" (click)="addChart()">
-                <span class="material-icons text-muted-foreground group-hover:text-primary transition-colors">analytics</span>
-                <span class="text-[10px] font-bold uppercase tracking-tighter text-muted-foreground group-hover:text-foreground">Chart Block</span>
-              </div>
-              <div class="flex flex-col items-center gap-2 p-4 rounded-lg bg-background border border-border/50 hover:border-primary/50 hover:bg-primary/5 transition-all cursor-pointer group shadow-sm" (click)="addFilter()">
-                <span class="material-icons text-muted-foreground group-hover:text-primary transition-colors">tune</span>
-                <span class="text-[10px] font-bold uppercase tracking-tighter text-muted-foreground group-hover:text-foreground">Global Filter</span>
-              </div>
-              <div class="flex flex-col items-center gap-2 p-4 rounded-lg bg-background border border-border/50 hover:border-primary/50 hover:bg-primary/5 transition-all cursor-pointer group shadow-sm">
-                <span class="material-icons text-muted-foreground group-hover:text-primary transition-colors">security</span>
-                <span class="text-[10px] font-bold uppercase tracking-tighter text-muted-foreground group-hover:text-foreground">Access Policy</span>
-              </div>
+          <div class="p-2 grid grid-cols-2 gap-2" *ngIf="componentsOpen()">
+            <div class="flex flex-col items-center gap-1.5 p-3 rounded-lg bg-white border border-slate-100 hover:border-brand-primary/50 hover:bg-slate-50 transition-all cursor-pointer group shadow-sm" (click)="addEmptyGrid()">
+              <span class="material-icons text-slate-400 group-hover:text-brand-primary text-sm">grid_view</span>
+              <span class="text-[8px] font-black uppercase tracking-tighter text-slate-500">Data Grid</span>
+            </div>
+            <div class="flex flex-col items-center gap-1.5 p-3 rounded-lg bg-white border border-slate-100 hover:border-brand-primary/50 hover:bg-slate-50 transition-all cursor-pointer group shadow-sm" (click)="addChart()">
+              <span class="material-icons text-slate-400 group-hover:text-brand-primary text-sm">bar_chart</span>
+              <span class="text-[8px] font-black uppercase tracking-tighter text-slate-500">Chart Block</span>
             </div>
           </div>
         </div>
@@ -132,32 +110,26 @@ import type { EntityMetadata, ReportDefinition } from '../../core/models/report.
     </div>
   `,
   styles: [`
-    :host { display: block; height: 100%; border-right: 1px solid var(--border); }
-    .custom-scrollbar::-webkit-scrollbar { width: 4px; }
-    .custom-scrollbar::-webkit-scrollbar-thumb { background: var(--border); border-radius: 10px; }
-    .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: var(--muted-foreground); }
+    :host { display: block; height: 100%; }
+    .custom-scrollbar::-webkit-scrollbar { width: 3px; }
+    .custom-scrollbar::-webkit-scrollbar-thumb { background: #e2e8f0; border-radius: 10px; }
   `]
 })
 export class ControlsPaletteComponent implements OnInit {
   svc = inject(ReportService);
-
-  constructor() {
-    effect(() => {
-      // Re-load when refreshNeeded changes
-      if (this.svc.refreshNeeded() >= 0) {
-        this.loadReports();
-      }
-    });
-  }
-
-  ngOnInit() {
-    this.svc.loadEntities();
-  }
   searchTerm = signal('');
   entitiesOpen = signal(true);
   reportsOpen = signal(false);
   componentsOpen = signal(true);
   savedReports = signal<any[]>([]);
+
+  constructor() {
+    effect(() => {
+      if (this.svc.refreshNeeded() >= 0) this.loadReports();
+    });
+  }
+
+  ngOnInit() { this.svc.loadEntities(); }
 
   filteredEntities = computed(() => {
     const term = this.searchTerm().toLowerCase();
@@ -166,14 +138,10 @@ export class ControlsPaletteComponent implements OnInit {
     );
   });
 
-  onSearch(e: Event) {
-    this.searchTerm.set((e.target as HTMLInputElement).value);
-  }
+  onSearch(e: Event) { this.searchTerm.set((e.target as HTMLInputElement).value); }
 
   openEntity(entity: EntityMetadata) {
-    if (!this.svc.activeReport()) {
-      this.svc.setActiveReport(defaultReport());
-    }
+    if (!this.svc.activeReport()) this.svc.setActiveReport(defaultReport());
     this.addGrid(entity);
   }
 
@@ -193,15 +161,11 @@ export class ControlsPaletteComponent implements OnInit {
     if (!report) return;
     this.svc.activeReport.set({
       ...report,
-      chart: { type: 'bar', xAxis: '', yAxis: '', aggregation: 'SUM', title: 'New Chart' }
+      chart: { type: 'bar', xAxis: '', yAxis: '', aggregation: 'SUM', title: 'New Visualization' }
     });
   }
 
-  addFilter() { }
-
-  openReport(report: any) {
-    this.svc.setActiveReport(report);
-  }
+  openReport(report: any) { this.svc.setActiveReport(report); }
 
   loadReports() {
     this.svc.loadReports().subscribe(reports => this.savedReports.set(reports));
@@ -209,8 +173,7 @@ export class ControlsPaletteComponent implements OnInit {
 
   deleteReport(report: any, event: Event) {
     event.stopPropagation();
-    // For simplicity, we use simple confirm here. In a real app, I'd use a service-based modal.
-    if (confirm(`Are you sure you want to delete "${report.name}"?`)) {
+    if (confirm(`Purge asset "${report.name}"?`)) {
       this.svc.deleteReport(report.id).subscribe();
     }
   }
